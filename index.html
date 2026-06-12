@@ -1069,10 +1069,14 @@ async function syncNow() {
       nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
     }
 
-    // STEP 2: Push merged local data back to server
-    const pushPayload = encodeURIComponent(JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
-    const pushUrl = `${conf.sheetUrl}?action=push&token=${token}&data=${pushPayload}`;
-    await fetch(pushUrl, { method:'GET', mode:'no-cors' });
+    // STEP 2: Push merged local data back to server via POST
+    const pushPayload = JSON.stringify({ token: conf.apiKey||'', action: 'push', stocks, nextSid, nextEid, deletedIds });
+    await fetch(conf.sheetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: pushPayload,
+      mode: 'no-cors'
+    });
 
     save();
     renderJournal();
@@ -1149,23 +1153,31 @@ const SHEET_NAME = 'Journal';
 const DATA_SHEET = 'SyncData';
 const DRIVE_FOLDER = 'Stock Journal Charts';
 
-function doGet(e) {
-  if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
-    return respond({ status: 'error', message: 'Unauthorized' });
-  }
-
-  // PUSH: receive local data, merge with server, write back
-  if (e.parameter.action === 'push') {
-    try {
-      const incoming = JSON.parse(decodeURIComponent(e.parameter.data));
+// POST: handles push (data too large for URL)
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents);
+    if (!body.token || body.token !== SECRET_TOKEN) {
+      return respond({ status: 'error', message: 'Unauthorized' });
+    }
+    if (body.action === 'push') {
+      const incoming = { stocks: body.stocks, nextSid: body.nextSid, nextEid: body.nextEid, deletedIds: body.deletedIds || [] };
       const current = loadData();
       const merged = mergeData(current, incoming);
       saveData(merged);
       writeToSheet(merged.stocks);
       return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
     }
+    return respond({ status: 'error', message: 'Unknown action' });
+  } catch(err) {
+    return respond({ status: 'error', message: err.message });
+  }
+}
+
+// GET: handles pull and image upload
+function doGet(e) {
+  if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
+    return respond({ status: 'error', message: 'Unauthorized' });
   }
 
   // PULL: return current server data to device
@@ -1197,9 +1209,9 @@ function doGet(e) {
 function loadData() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sheet = ss.getSheetByName(DATA_SHEET);
-  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1 };
+  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
   const val = sheet.getRange('A1').getValue();
-  if (!val) return { stocks: [], nextSid: 1, nextEid: 1 };
+  if (!val) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
   return JSON.parse(val);
 }
 
@@ -1231,7 +1243,6 @@ function mergeData(server, incoming) {
     }
   });
 
-  // Apply tombstones to all stocks
   mergedStocks.forEach(s => { s.entries = (s.entries||[]).filter(e => !allDeletedIds.includes(e.id)); });
 
   return {
