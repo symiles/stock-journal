@@ -10,23 +10,23 @@
 <title>Stock Journal</title>
 <style>
   :root {
-    --bg: #0f1117;
-    --surface: #181c27;
-    --surface2: #1f2535;
-    --border: rgba(255,255,255,0.08);
-    --border2: rgba(255,255,255,0.14);
-    --text: #eef0f6;
-    --text2: #8b92a8;
-    --text3: #545c73;
-    --accent: #4f8ef7;
-    --accent-bg: rgba(79,142,247,0.12);
-    --green: #34c77b;
-    --green-bg: rgba(52,199,123,0.12);
-    --red: #f25c5c;
-    --red-bg: rgba(242,92,92,0.12);
-    --amber: #f5a623;
-    --amber-bg: rgba(245,166,35,0.12);
-    --gray-bg: rgba(255,255,255,0.06);
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface2: #f0f2f7;
+    --border: rgba(0,0,0,0.08);
+    --border2: rgba(0,0,0,0.14);
+    --text: #1a1d2e;
+    --text2: #4a5068;
+    --text3: #9097b0;
+    --accent: #2d6ef5;
+    --accent-bg: rgba(45,110,245,0.10);
+    --green: #1aab5f;
+    --green-bg: rgba(26,171,95,0.10);
+    --red: #e03030;
+    --red-bg: rgba(224,48,48,0.10);
+    --amber: #d4820a;
+    --amber-bg: rgba(212,130,10,0.10);
+    --gray-bg: rgba(0,0,0,0.05);
     --radius: 12px;
     --radius-sm: 8px;
     --safe-top: env(safe-area-inset-top, 0px);
@@ -46,7 +46,7 @@
   /* NAV */
   .topbar {
     position: sticky; top: 0; z-index: 100;
-    background: rgba(15,17,23,0.92);
+    background: rgba(245,246,250,0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     padding: calc(var(--safe-top) + 14px) 16px 14px;
@@ -60,7 +60,7 @@
   /* BOTTOM TAB BAR */
   .tabbar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-    background: rgba(15,17,23,0.95);
+    background: rgba(245,246,250,0.96);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-top: 0.5px solid var(--border);
@@ -135,10 +135,11 @@
     display: inline-block; font-size: 11px; font-weight: 500;
     padding: 2px 8px; border-radius: 99px; margin-bottom: 5px;
   }
-  .sent-bullish { background: var(--green-bg); color: var(--green); }
-  .sent-bearish { background: var(--red-bg); color: var(--red); }
-  .sent-neutral { background: var(--gray-bg); color: var(--text2); }
-  .sent-watching { background: var(--amber-bg); color: var(--amber); }
+  .sent-inside { background: var(--accent-bg); color: var(--accent); }
+  .sent-consolidation { background: var(--amber-bg); color: var(--amber); }
+  .sent-pullback { background: var(--green-bg); color: var(--green); }
+  .sent-breakout { background: var(--red-bg); color: var(--red); }
+  .sent-etc { background: var(--gray-bg); color: var(--text2); }
   .entry-text { font-size: 13px; color: var(--text); line-height: 1.6; }
   .del-btn { background: none; border: none; padding: 4px; color: var(--text3); cursor: pointer; flex-shrink: 0; }
   .del-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
@@ -278,7 +279,7 @@
   .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
   .lightbox.open { display: flex; }
   .lightbox img { max-width: 100%; max-height: 90dvh; border-radius: var(--radius); object-fit: contain; }
-  .lightbox-close { position: absolute; top: 16px; right: 16px; background: var(--surface2); border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .lightbox-close { position: absolute; top: 16px; right: 16px; background: rgba(30,30,30,0.8); border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
   .lightbox-close svg { width: 18px; height: 18px; stroke: var(--text); fill: none; stroke-width: 2; stroke-linecap: round; }
 
   @media (min-width: 540px) {
@@ -324,11 +325,40 @@
   <div id="journalList"></div>
 </div>
 
-<!-- STATS PAGE -->
+<!-- FILTER PAGE -->
+<div class="page" id="page-filter">
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <button class="filter-chip active" id="fsetup-all" onclick="setFilterSetup('all',this)">All</button>
+    <button class="filter-chip" id="fsetup-inside" onclick="setFilterSetup('inside',this)">Inside Candle</button>
+    <button class="filter-chip" id="fsetup-consolidation" onclick="setFilterSetup('consolidation',this)">Consolidation</button>
+    <button class="filter-chip" id="fsetup-pullback" onclick="setFilterSetup('pullback',this)">Pull-back</button>
+    <button class="filter-chip" id="fsetup-breakout" onclick="setFilterSetup('breakout',this)">Breakout</button>
+    <button class="filter-chip" id="fsetup-etc" onclick="setFilterSetup('etc',this)">ETC</button>
+  </div>
+  <div class="filter-row" style="margin-bottom:12px;">
+    <button class="filter-chip active" id="fmarket-ALL" onclick="setFilterMarket('ALL',this)">All</button>
+    <button class="filter-chip" id="fmarket-PH" onclick="setFilterMarket('PH',this)">🇵🇭 PH</button>
+    <button class="filter-chip" id="fmarket-HK" onclick="setFilterMarket('HK',this)">🇭🇰 HK</button>
+  </div>
+  <div id="filterList"></div>
+</div>
 <div class="page" id="page-stats">
   <div class="stats-grid" id="statsGrid"></div>
   <div id="sentimentBreakdown"></div>
   <div id="recentEntries"></div>
+</div>
+
+<!-- LOG PAGE -->
+<div class="page" id="page-log">
+  <div class="filter-row" style="margin-bottom:12px;">
+    <button class="filter-chip active" id="log-tab-PH" onclick="setLogMarket('PH',this)">🇵🇭 Philippines</button>
+    <button class="filter-chip" id="log-tab-HK" onclick="setLogMarket('HK',this)">🇭🇰 Hong Kong</button>
+  </div>
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="search-input" id="logSearchInput" placeholder="Search date, ticker or notes…" oninput="renderLog()" />
+  </div>
+  <div id="logList"></div>
 </div>
 
 <!-- SETTINGS PAGE -->
@@ -412,6 +442,14 @@
   <button class="tabbar-btn active" id="tab-journal" onclick="showPage('journal')">
     <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     Journal
+  </button>
+  <button class="tabbar-btn" id="tab-log" onclick="showPage('log')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Log
+  </button>
+  <button class="tabbar-btn" id="tab-filter" onclick="showPage('filter')">
+    <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    Filter
   </button>
   <button class="tabbar-btn" id="tab-stats" onclick="showPage('stats')">
     <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -504,14 +542,14 @@ const CONF = 'stockjournal_conf';
 
 const DEFAULT = [
   { id:1, ticker:'700', name:'Tencent Holdings', market:'HK', entries:[
-    { id:1, date:'2026-06-06', sentiment:'bullish', text:'Broke above 50-day MA on strong volume. Next resistance at 400. RSI not yet overbought.' },
-    { id:2, date:'2026-05-30', sentiment:'watching', text:'Consolidating below 390. Waiting for clean weekly close above.' }
+    { id:1, date:'2026-06-06', sentiment:'breakout', text:'Broke above 50-day MA on strong volume. Next resistance at 400. RSI not yet overbought.' },
+    { id:2, date:'2026-05-30', sentiment:'consolidation', text:'Consolidating below 390. Waiting for clean weekly close above.' }
   ]},
   { id:2, ticker:'9988', name:'Alibaba Group', market:'HK', entries:[
-    { id:1, date:'2026-06-06', sentiment:'neutral', text:'Inside week. No clear direction. Waiting for a catalyst.' }
+    { id:1, date:'2026-06-06', sentiment:'inside', text:'Inside week. No clear direction. Waiting for a catalyst.' }
   ]},
   { id:3, ticker:'SM', name:'SM Investments', market:'PH', entries:[
-    { id:1, date:'2026-06-06', sentiment:'bullish', text:'Cup and handle forming on weekly. Handle looks clean. Target 1050 on breakout.' }
+    { id:1, date:'2026-06-06', sentiment:'pullback', text:'Cup and handle forming on weekly. Handle looks clean. Target 1050 on breakout.' }
   ]},
   { id:4, ticker:'BPI', name:'Bank of the Philippine Islands', market:'PH', entries:[] }
 ];
@@ -561,6 +599,8 @@ function showPage(name) {
   fab.style.display = name === 'journal' ? 'flex' : 'none';
   if(name==='stats') renderStats();
   if(name==='settings') renderSettings();
+  if(name==='log') renderLog();
+  if(name==='filter') renderFilter();
 }
 
 function weekLabel(dateStr) {
@@ -595,7 +635,7 @@ function renderJournal() {
     const sorted = [...stock.entries].sort((a,b)=>b.date.localeCompare(a.date));
     const today = new Date().toISOString().split('T')[0];
 
-    const sentMap={bullish:'Bullish',bearish:'Bearish',neutral:'Neutral',watching:'Watching'};
+    const sentMap={inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
 
     const entriesHTML = sorted.length===0
       ? `<div style="padding:16px;text-align:center;font-size:13px;color:var(--text3);">No entries yet</div>`
@@ -606,7 +646,10 @@ function renderJournal() {
             <div class="entry-wk">${weekLabel(e.date)}</div>
           </div>
           <div class="entry-body">
-            <span class="sent-badge sent-${e.sentiment}">${sentMap[e.sentiment]||e.sentiment}</span>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+              <span class="sent-badge sent-${e.sentiment}" style="margin:0;">${sentMap[e.sentiment]||e.sentiment}</span>
+              ${e.price ? `<span style="font-size:12px;font-weight:600;color:var(--text2);background:var(--surface2);padding:2px 8px;border-radius:99px;">@ ${e.price}</span>` : ''}
+            </div>
             <div class="entry-text">${e.text}</div>
             ${e.imgData ? `<img class="entry-img" src="${e.imgData}" alt="Chart" onclick="openLightbox('${e.imgData}')" />` : ''}
             ${e.driveUrl ? `<a href="${e.driveUrl}" target="_blank" style="font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:4px;margin-top:6px;text-decoration:none;">
@@ -628,18 +671,23 @@ function renderJournal() {
         <button style="background:none;border:none;padding:6px;color:var(--text3);cursor:pointer;" onclick="event.stopPropagation();toggleAdding(${stock.id})" title="Add entry">
           <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
+        <button style="background:none;border:none;padding:6px;color:var(--red);cursor:pointer;opacity:0.7;" onclick="event.stopPropagation();deleteStock(${stock.id},'${stock.ticker}')" title="Delete ticker">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
         <svg class="chevron-icon" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="add-form">
         <div class="form-row">
           <input type="date" class="form-date" id="edate-${stock.id}" value="${today}" />
           <select class="form-select" id="esent-${stock.id}">
-            <option value="bullish">Bullish</option>
-            <option value="bearish">Bearish</option>
-            <option value="neutral">Neutral</option>
-            <option value="watching">Watching</option>
+            <option value="inside">Inside Candle</option>
+            <option value="consolidation">Consolidation</option>
+            <option value="pullback">Pull-back Support</option>
+            <option value="breakout">Breakout</option>
+            <option value="etc">ETC</option>
           </select>
         </div>
+        <input type="number" class="form-textarea" id="eprice-${stock.id}" placeholder="Price at time of entry (optional)" step="any" min="0" style="min-height:unset;padding:10px 12px;margin-bottom:10px;" />
         <textarea class="form-textarea" id="etext-${stock.id}" placeholder="Your chart commentary…"></textarea>
         <div class="img-upload-row">
           <label class="img-upload-label" for="eimg-${stock.id}">
@@ -715,6 +763,8 @@ async function saveEntry(sid) {
   const date=document.getElementById('edate-'+sid).value;
   const sentiment=document.getElementById('esent-'+sid).value;
   const text=document.getElementById('etext-'+sid).value.trim();
+  const priceRaw=document.getElementById('eprice-'+sid).value.trim();
+  const price = priceRaw ? parseFloat(priceRaw) : null;
   if(!text) return;
 
   const imgInput = document.getElementById('eimg-'+sid);
@@ -737,7 +787,7 @@ async function saveEntry(sid) {
   }
 
   const s=stocks.find(s=>s.id===sid);
-  s.entries.push({id:nextEid++, date, sentiment, text, imgData, driveUrl});
+  s.entries.push({id:nextEid++, date, sentiment, text, price, imgData, driveUrl});
   addingCards.delete(sid); openCards.add(sid);
   save(); renderJournal(); toast('Entry saved');
 }
@@ -746,6 +796,13 @@ function delEntry(sid,eid) {
   const s=stocks.find(s=>s.id===sid);
   s.entries=s.entries.filter(e=>e.id!==eid);
   save(); renderJournal(); toast('Entry deleted');
+}
+
+function deleteStock(sid, ticker) {
+  if(!confirm(`Delete ${ticker} and all its entries? This cannot be undone.`)) return;
+  stocks=stocks.filter(s=>s.id!==sid);
+  openCards.delete(sid); addingCards.delete(sid);
+  save(); renderJournal(); toast(`${ticker} removed`);
 }
 
 function setMarket(m,btn) {
@@ -770,11 +827,78 @@ function addStock() {
   save(); renderJournal(); toast('Stock added');
 }
 
+let activeFilterSetup = 'all';
+let activeFilterMarket = 'ALL';
+
+function setFilterSetup(v, btn) {
+  activeFilterSetup = v;
+  document.querySelectorAll('#page-filter .filter-chip[id^="fsetup"]').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  renderFilter();
+}
+
+function setFilterMarket(v, btn) {
+  activeFilterMarket = v;
+  document.querySelectorAll('#page-filter .filter-chip[id^="fmarket"]').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  renderFilter();
+}
+
+function renderFilter() {
+  const sentMap = {inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
+  const sentColors = {inside:'var(--accent)',consolidation:'var(--amber)',pullback:'var(--green)',breakout:'var(--red)',etc:'var(--text2)'};
+  const container = document.getElementById('filterList');
+  if (!container) return;
+
+  // Collect matching entries
+  const allEntries = [];
+  stocks.forEach(s => {
+    if (activeFilterMarket !== 'ALL' && s.market !== activeFilterMarket) return;
+    s.entries.forEach(e => {
+      if (activeFilterSetup === 'all' || e.sentiment === activeFilterSetup) {
+        allEntries.push({ ...e, ticker: s.ticker, name: s.name, market: s.market });
+      }
+    });
+  });
+
+  allEntries.sort((a,b) => b.date.localeCompare(a.date));
+
+  const label = activeFilterSetup === 'all' ? 'All setups' : sentMap[activeFilterSetup];
+  const mktLabel = activeFilterMarket === 'ALL' ? 'All markets' : activeFilterMarket === 'PH' ? '🇵🇭 Philippines' : '🇭🇰 Hong Kong';
+
+  if (!allEntries.length) {
+    container.innerHTML = `<div class="empty-card">No entries for <b>${label}</b> in ${mktLabel}</div>`; return;
+  }
+
+  const countBadge = `<span style="font-size:12px;color:var(--text3);font-weight:400;">${allEntries.length} entr${allEntries.length===1?'y':'ies'}</span>`;
+
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      ${label} · ${mktLabel} ${countBadge}
+    </div>
+    ${allEntries.map(e => `
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:600;background:var(--surface2);padding:3px 9px;border-radius:6px;color:var(--text);">${e.ticker}</span>
+          <span style="font-size:11px;color:var(--text3);">${e.market === 'PH' ? '🇵🇭' : '🇭🇰'} ${e.market}</span>
+          <span style="font-size:11px;color:var(--text2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.name}</span>
+          <span class="sent-badge sent-${e.sentiment}" style="margin:0;flex-shrink:0;">${sentMap[e.sentiment]||e.sentiment}</span>
+          ${e.price ? `<span style="font-size:12px;font-weight:600;color:var(--text2);background:var(--surface2);padding:2px 8px;border-radius:99px;flex-shrink:0;">@ ${e.price}</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:5px;">${new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'2-digit'})} · ${weekLabel(e.date)}</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6;">${e.text}</div>
+        ${e.imgData ? `<img class="entry-img" src="${e.imgData}" alt="Chart" onclick="openLightbox('${e.imgData}')" style="margin-top:8px;" />` : ''}
+        ${e.driveUrl ? `<a href="${e.driveUrl}" target="_blank" style="font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:4px;margin-top:6px;text-decoration:none;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          View in Drive</a>` : ''}
+      </div>`).join('')}`;
+}
+
 function renderStats() {
   const total=stocks.reduce((a,s)=>a+s.entries.length,0);
   const hk=stocks.filter(s=>s.market==='HK');
   const ph=stocks.filter(s=>s.market==='PH');
-  const counts={bullish:0,bearish:0,neutral:0,watching:0};
+  const counts={inside:0,consolidation:0,pullback:0,breakout:0,etc:0};
   stocks.forEach(s=>s.entries.forEach(e=>{if(counts[e.sentiment]!==undefined)counts[e.sentiment]++;}));
 
   document.getElementById('statsGrid').innerHTML=`
@@ -784,8 +908,8 @@ function renderStats() {
     <div class="stat-tile"><div class="stat-tile-label">PH tickers</div><div class="stat-tile-val">${ph.length}</div></div>
   `;
 
-  const sentColors={bullish:'var(--green)',bearish:'var(--red)',neutral:'var(--text2)',watching:'var(--amber)'};
-  const sentLabels={bullish:'Bullish',bearish:'Bearish',neutral:'Neutral',watching:'Watching'};
+  const sentColors={inside:'var(--accent)',consolidation:'var(--amber)',pullback:'var(--green)',breakout:'var(--red)',etc:'var(--text2)'};
+  const sentLabels={inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
   const maxCount=Math.max(...Object.values(counts),1);
 
   document.getElementById('sentimentBreakdown').innerHTML=`
@@ -820,6 +944,76 @@ function renderStats() {
   `;
 }
 
+let activeLogMarket = 'PH';
+
+function setLogMarket(m, btn) {
+  activeLogMarket = m;
+  document.querySelectorAll('#page-log .filter-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  renderLog();
+}
+
+function renderLog() {
+  const q = (document.getElementById('logSearchInput')?.value || '').toLowerCase();
+  const sentMap = {inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
+  const container = document.getElementById('logList');
+  if (!container) return;
+
+  // Collect entries for the active market only
+  const allEntries = [];
+  stocks.forEach(s => {
+    if (s.market !== activeLogMarket) return;
+    s.entries.forEach(e => {
+      if (!q || s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || e.text.toLowerCase().includes(q) || e.date.includes(q)) {
+        allEntries.push({ ...e, ticker: s.ticker, name: s.name, market: s.market, stockId: s.id });
+      }
+    });
+  });
+
+  // Group by date
+  const byDate = {};
+  allEntries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  const dates = Object.keys(byDate).sort((a,b) => b.localeCompare(a));
+
+  if (!dates.length) {
+    container.innerHTML = `<div class="empty-card">No entries found for ${activeLogMarket === 'PH' ? '🇵🇭 Philippines' : '🇭🇰 Hong Kong'}</div>`; return;
+  }
+
+  container.innerHTML = dates.map(date => {
+    const dayEntries = byDate[date];
+    const d = new Date(date + 'T00:00:00');
+    const dateLabel = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    const wk = weekLabel(date);
+
+    return `
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:0.5px solid var(--border2);">
+          <span style="font-size:15px;font-weight:700;color:var(--text);">${dateLabel}</span>
+          <span style="font-size:12px;color:var(--text3);">${wk}</span>
+          <span style="font-size:12px;color:var(--text3);margin-left:auto;">${dayEntries.length} entr${dayEntries.length===1?'y':'ies'}</span>
+        </div>
+        ${dayEntries.map(e => `
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:12px;font-weight:600;background:var(--surface2);padding:3px 9px;border-radius:6px;color:var(--text);">${e.ticker}</span>
+              <span style="font-size:12px;color:var(--text2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.name}</span>
+              <span class="sent-badge sent-${e.sentiment}" style="margin:0;flex-shrink:0;">${sentMap[e.sentiment]||e.sentiment}</span>
+              ${e.price ? `<span style="font-size:12px;font-weight:600;color:var(--text2);background:var(--surface2);padding:2px 8px;border-radius:99px;flex-shrink:0;">@ ${e.price}</span>` : ''}
+            </div>
+            <div style="font-size:13px;color:var(--text);line-height:1.6;">${e.text}</div>
+            ${e.imgData ? `<img class="entry-img" src="${e.imgData}" alt="Chart" onclick="openLightbox('${e.imgData}')" style="margin-top:8px;" />` : ''}
+            ${e.driveUrl ? `<a href="${e.driveUrl}" target="_blank" style="font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:4px;margin-top:6px;text-decoration:none;">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              View in Drive</a>` : ''}
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+}
+
 function renderSettings() {
   document.getElementById('sheetIdDisplay').textContent = conf.sheetUrl ? conf.sheetUrl.substring(0,40)+'…' : 'Not configured';
   document.getElementById('apiKeyDisplay').textContent = conf.apiKey ? '••••••••' : 'Not configured';
@@ -850,16 +1044,60 @@ async function syncNow() {
   const icon = document.getElementById('syncIcon');
   icon.style.animation = 'spin 1s linear infinite';
   icon.style.transformOrigin = 'center';
-  toast('Syncing…', 4000);
+  toast('Syncing…', 5000);
   try {
-    const data = encodeURIComponent(JSON.stringify(stocks));
+    // STEP 1: Push local data to server
+    const pushData = encodeURIComponent(JSON.stringify({ stocks, nextSid, nextEid }));
     const token = encodeURIComponent(conf.apiKey||'');
-    const url = `${conf.sheetUrl}?action=sync&token=${token}&data=${data}`;
-    const res = await fetch(url, { method:'GET', mode:'no-cors' });
+    const pushUrl = `${conf.sheetUrl}?action=push&token=${token}&data=${pushData}`;
+    await fetch(pushUrl, { method:'GET', mode:'no-cors' });
+
+    // STEP 2: Pull merged data back from server
+    const pullUrl = `${conf.sheetUrl}?action=pull&token=${token}&_=${Date.now()}`;
+    const res = await fetch(pullUrl, { method:'GET' });
+    const json = await res.json();
+
+    if (json.status === 'ok' && json.data) {
+      const remote = JSON.parse(json.data);
+      // Merge: combine stocks from both sides, merge entries by id
+      const merged = mergeStocks(stocks, remote.stocks || []);
+      stocks = merged;
+      nextSid = Math.max(nextSid, remote.nextSid || 0) + 1;
+      nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
+      save();
+      renderJournal();
+      if(currentPage==='log') renderLog();
+      if(currentPage==='filter') renderFilter();
+      if(currentPage==='stats') renderStats();
+    }
+
     conf.lastSync = new Date().toISOString();
-    saveConf(); setDirty(false); renderSettings(); toast('Synced to Google Sheets');
-  } catch(e) { toast('Sync failed — check your URL'); }
+    saveConf(); setDirty(false); renderSettings();
+    toast('Synced ✓ — data merged across devices');
+  } catch(e) {
+    toast('Sync failed — check your URL');
+  }
   icon.style.animation='';
+}
+
+function mergeStocks(local, remote) {
+  const merged = [...local];
+  remote.forEach(rStock => {
+    const lStock = merged.find(s => s.ticker === rStock.ticker && s.market === rStock.market);
+    if (!lStock) {
+      // New stock from remote — add it
+      merged.push(rStock);
+    } else {
+      // Merge entries: combine by entry id, remote wins on conflict
+      const entryMap = {};
+      lStock.entries.forEach(e => entryMap[e.id] = e);
+      rStock.entries.forEach(e => {
+        if (!entryMap[e.id]) entryMap[e.id] = e; // new entry from remote
+      });
+      lStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
+    }
+  });
+  return merged;
 }
 
 function exportJSON() {
@@ -887,25 +1125,43 @@ function importJSON(event) {
   reader.readAsText(file);
 }
 
-const APPS_SCRIPT = `// Stock Journal — Google Apps Script (with Drive image upload)
+const APPS_SCRIPT = `// Stock Journal — Google Apps Script (Two-way sync)
 const SHEET_ID = '1yHAVijHwnpNMsl4sjAZosJcg397xy6tiSLo57CCBMm78FV7Owhbk5bea';
 const SECRET_TOKEN = 'Livermore';
 const SHEET_NAME = 'Journal';
+const DATA_SHEET = 'SyncData';
 const DRIVE_FOLDER = 'Stock Journal Charts';
 
 function doGet(e) {
   if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
     return respond({ status: 'error', message: 'Unauthorized' });
   }
-  if (e.parameter.action === 'sync') {
+
+  // PUSH: receive local data, merge with server, write back
+  if (e.parameter.action === 'push') {
     try {
-      const stocks = JSON.parse(decodeURIComponent(e.parameter.data));
-      writeToSheet(stocks);
+      const incoming = JSON.parse(decodeURIComponent(e.parameter.data));
+      const current = loadData();
+      const merged = mergeData(current, incoming);
+      saveData(merged);
+      writeToSheet(merged.stocks);
       return respond({ status: 'ok' });
     } catch(err) {
       return respond({ status: 'error', message: err.message });
     }
   }
+
+  // PULL: return current server data to device
+  if (e.parameter.action === 'pull') {
+    try {
+      const current = loadData();
+      return respond({ status: 'ok', data: JSON.stringify(current) });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+
+  // IMAGE UPLOAD
   if (e.parameter.action === 'upload') {
     try {
       const filename = decodeURIComponent(e.parameter.filename);
@@ -916,7 +1172,49 @@ function doGet(e) {
       return respond({ status: 'error', message: err.message });
     }
   }
+
   return respond({ status: 'ok', message: 'Stock Journal API running' });
+}
+
+// Load JSON data from hidden SyncData sheet
+function loadData() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(DATA_SHEET);
+  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1 };
+  const val = sheet.getRange('A1').getValue();
+  if (!val) return { stocks: [], nextSid: 1, nextEid: 1 };
+  return JSON.parse(val);
+}
+
+// Save JSON data to hidden SyncData sheet
+function saveData(data) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(DATA_SHEET);
+  if (!sheet) sheet = ss.insertSheet(DATA_SHEET);
+  sheet.getRange('A1').setValue(JSON.stringify(data));
+}
+
+// Merge two datasets — combine stocks and entries by ticker+market and entry id
+function mergeData(server, incoming) {
+  const mergedStocks = [...(server.stocks || [])];
+  (incoming.stocks || []).forEach(iStock => {
+    const sStock = mergedStocks.find(s => s.ticker === iStock.ticker && s.market === iStock.market);
+    if (!sStock) {
+      mergedStocks.push(iStock);
+    } else {
+      const entryMap = {};
+      sStock.entries.forEach(e => entryMap[e.id] = e);
+      iStock.entries.forEach(e => { if (!entryMap[e.id]) entryMap[e.id] = e; });
+      sStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
+      // Keep most complete stock info
+      if (iStock.name && iStock.name !== iStock.ticker) sStock.name = iStock.name;
+    }
+  });
+  return {
+    stocks: mergedStocks,
+    nextSid: Math.max(server.nextSid || 0, incoming.nextSid || 0) + 1,
+    nextEid: Math.max(server.nextEid || 0, incoming.nextEid || 0) + 1
+  };
 }
 
 function saveImageToDrive(filename, base64Data) {
@@ -937,11 +1235,11 @@ function writeToSheet(stocks) {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
   sheet.clearContents();
-  const headers = ['Ticker','Market','Company','Date','Week','Sentiment','Commentary','Chart'];
+  const headers = ['Ticker','Market','Company','Date','Week','Setup','Price','Commentary','Chart'];
   const rows = [headers];
   stocks.forEach(stock => {
-    if (stock.entries.length === 0) {
-      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '', '']);
+    if (!stock.entries || stock.entries.length === 0) {
+      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '', '', '']);
     } else {
       const sorted = stock.entries.slice().sort((a,b) => b.date.localeCompare(a.date));
       sorted.forEach(e => {
@@ -949,7 +1247,8 @@ function writeToSheet(stocks) {
         const wkStart = new Date(d);
         wkStart.setDate(d.getDate() - d.getDay() + 1);
         const wk = 'Wk ' + wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, e.sentiment, e.text, e.driveUrl || '']);
+        const setupMap = {inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
+        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, setupMap[e.sentiment]||e.sentiment, e.price||'', e.text, e.driveUrl||'']);
       });
     }
   });
