@@ -755,17 +755,12 @@ async function syncNow() {
   icon.style.transformOrigin = 'center';
   toast('Syncing…', 4000);
   try {
-    const payload = { action:'sync', token: conf.apiKey||'', data: JSON.stringify(stocks) };
-    const res = await fetch(conf.sheetUrl, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const json = await res.json();
-    if(json.status==='ok') {
-      conf.lastSync = new Date().toISOString();
-      saveConf(); setDirty(false); renderSettings(); toast('Synced to Google Sheets');
-    } else { toast('Sync error: '+(json.message||'unknown')); }
+    const data = encodeURIComponent(JSON.stringify(stocks));
+    const token = encodeURIComponent(conf.apiKey||'');
+    const url = `${conf.sheetUrl}?action=sync&token=${token}&data=${data}`;
+    const res = await fetch(url, { method:'GET', mode:'no-cors' });
+    conf.lastSync = new Date().toISOString();
+    saveConf(); setDirty(false); renderSettings(); toast('Synced to Google Sheets');
   } catch(e) { toast('Sync failed — check your URL'); }
   icon.style.animation='';
 }
