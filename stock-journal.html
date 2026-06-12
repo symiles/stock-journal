@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Stock Journal" />
+<meta name="theme-color" content="#0f1117" />
+<title>Stock Journal</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1f2535;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #eef0f6;
+    --text2: #8b92a8;
+    --text3: #545c73;
+    --accent: #4f8ef7;
+    --accent-bg: rgba(79,142,247,0.12);
+    --green: #34c77b;
+    --green-bg: rgba(52,199,123,0.12);
+    --red: #f25c5c;
+    --red-bg: rgba(242,92,92,0.12);
+    --amber: #f5a623;
+    --amber-bg: rgba(245,166,35,0.12);
+    --gray-bg: rgba(255,255,255,0.06);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding-bottom: calc(64px + var(--safe-bottom));
+  }
+
+  /* NAV */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,17,23,0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: calc(var(--safe-top) + 14px) 16px 14px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .topbar-title { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .topbar-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .topbar-actions { display: flex; gap: 8px; }
+
+  /* BOTTOM TAB BAR */
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(15,17,23,0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 0.5px solid var(--border);
+    display: flex;
+    padding-bottom: var(--safe-bottom);
+  }
+  .tabbar-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 10px 0; background: none; border: none;
+    color: var(--text3); font-size: 10px; cursor: pointer;
+    transition: color 0.15s;
+  }
+  .tabbar-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .tabbar-btn.active { color: var(--accent); }
+
+  /* PAGES */
+  .page { display: none; padding: 16px; }
+  .page.active { display: block; }
+
+  /* MARKET FILTER */
+  .filter-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-chip {
+    padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 500;
+    border: 0.5px solid var(--border2); background: transparent;
+    color: var(--text2); cursor: pointer; transition: all 0.15s;
+  }
+  .filter-chip.active { background: var(--accent-bg); color: var(--accent); border-color: rgba(79,142,247,0.3); }
+
+  /* SEARCH */
+  .search-wrap { position: relative; margin-bottom: 16px; }
+  .search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: var(--text3); fill: none; stroke-width: 2; stroke-linecap: round; }
+  .search-input {
+    width: 100%; background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 12px 10px 36px;
+    font-size: 14px; color: var(--text); outline: none;
+  }
+  .search-input::placeholder { color: var(--text3); }
+
+  /* STOCK CARDS */
+  .stock-card {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 10px; overflow: hidden;
+  }
+  .stock-head {
+    display: flex; align-items: center; padding: 14px 16px; gap: 12px;
+    cursor: pointer; user-select: none;
+  }
+  .ticker-pill {
+    font-size: 13px; font-weight: 600; padding: 5px 10px;
+    border-radius: var(--radius-sm); background: var(--surface2);
+    color: var(--text); min-width: 64px; text-align: center; letter-spacing: 0.3px;
+  }
+  .stock-info { flex: 1; min-width: 0; }
+  .stock-name-text { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stock-meta { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .chevron-icon { width: 18px; height: 18px; stroke: var(--text3); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s; flex-shrink: 0; }
+  .stock-card.open .chevron-icon { transform: rotate(180deg); }
+
+  .entries-section { border-top: 0.5px solid var(--border); display: none; }
+  .stock-card.open .entries-section { display: block; }
+
+  .entry-item {
+    padding: 12px 16px; border-bottom: 0.5px solid var(--border);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .entry-item:last-child { border-bottom: none; }
+  .entry-left { min-width: 72px; }
+  .entry-date { font-size: 12px; font-weight: 500; color: var(--text2); }
+  .entry-wk { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .entry-body { flex: 1; min-width: 0; }
+  .sent-badge {
+    display: inline-block; font-size: 11px; font-weight: 500;
+    padding: 2px 8px; border-radius: 99px; margin-bottom: 5px;
+  }
+  .sent-bullish { background: var(--green-bg); color: var(--green); }
+  .sent-bearish { background: var(--red-bg); color: var(--red); }
+  .sent-neutral { background: var(--gray-bg); color: var(--text2); }
+  .sent-watching { background: var(--amber-bg); color: var(--amber); }
+  .entry-text { font-size: 13px; color: var(--text); line-height: 1.6; }
+  .del-btn { background: none; border: none; padding: 4px; color: var(--text3); cursor: pointer; flex-shrink: 0; }
+  .del-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
+
+  /* ADD ENTRY FORM (inline) */
+  .add-form {
+    display: none; padding: 14px 16px;
+    background: var(--surface2); border-top: 0.5px solid var(--border);
+  }
+  .stock-card.adding .add-form { display: block; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .form-select, .form-date {
+    flex: 1; background: var(--surface); border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 9px 10px; font-size: 13px;
+    color: var(--text); outline: none; -webkit-appearance: none;
+  }
+  .form-textarea {
+    width: 100%; background: var(--surface); border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px;
+    color: var(--text); outline: none; resize: vertical; min-height: 80px;
+    font-family: inherit; line-height: 1.5;
+  }
+  .form-textarea::placeholder { color: var(--text3); }
+  .form-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-primary {
+    flex: 1; padding: 11px; background: var(--accent); color: #fff;
+    border: none; border-radius: var(--radius-sm); font-size: 14px;
+    font-weight: 600; cursor: pointer;
+  }
+  .btn-ghost {
+    padding: 11px 16px; background: transparent; color: var(--text2);
+    border: 0.5px solid var(--border2); border-radius: var(--radius-sm);
+    font-size: 14px; cursor: pointer;
+  }
+
+  .empty-card {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 32px 16px; text-align: center;
+    color: var(--text3); font-size: 14px;
+  }
+
+  /* FAB */
+  .fab {
+    position: fixed; bottom: calc(72px + var(--safe-bottom)); right: 18px;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 20px rgba(79,142,247,0.4); z-index: 99;
+  }
+  .fab svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; }
+
+  /* MODALS */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+    align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    border: 0.5px solid var(--border2); width: 100%; max-width: 540px;
+    padding: 20px 20px calc(20px + var(--safe-bottom));
+  }
+  .modal-handle { width: 36px; height: 4px; background: var(--border2); border-radius: 99px; margin: 0 auto 20px; }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+  .modal-field { margin-bottom: 12px; }
+  .modal-label { font-size: 12px; color: var(--text3); margin-bottom: 5px; }
+  .modal-input {
+    width: 100%; background: var(--bg); border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 11px 12px; font-size: 14px;
+    color: var(--text); outline: none; font-family: inherit;
+  }
+  .modal-input::placeholder { color: var(--text3); }
+  .modal-select {
+    width: 100%; background: var(--bg); border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); padding: 11px 12px; font-size: 14px;
+    color: var(--text); outline: none; -webkit-appearance: none;
+  }
+  .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+
+  /* SETTINGS PAGE */
+  .section-title { font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 10px; margin-top: 20px; }
+  .section-title:first-child { margin-top: 0; }
+  .settings-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .settings-row {
+    display: flex; align-items: center; padding: 14px 16px; gap: 12px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .settings-row-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .settings-row-icon.green { background: var(--green-bg); color: var(--green); }
+  .settings-row-icon.blue { background: var(--accent-bg); color: var(--accent); }
+  .settings-row-icon.amber { background: var(--amber-bg); color: var(--amber); }
+  .settings-row-icon.red { background: var(--red-bg); color: var(--red); }
+  .settings-row-body { flex: 1; min-width: 0; }
+  .settings-row-label { font-size: 14px; font-weight: 500; }
+  .settings-row-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .settings-row-action { color: var(--accent); font-size: 13px; font-weight: 500; background: none; border: none; cursor: pointer; padding: 6px 0; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.connected { background: var(--green); }
+  .status-dot.disconnected { background: var(--text3); }
+
+  /* STATS */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .stat-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-tile-label { font-size: 12px; color: var(--text3); margin-bottom: 4px; }
+  .stat-tile-val { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
+
+  /* TOAST */
+  .toast {
+    position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%; transform: translateX(-50%);
+    background: var(--surface2); border: 0.5px solid var(--border2);
+    border-radius: 99px; padding: 9px 18px; font-size: 13px; font-weight: 500;
+    color: var(--text); z-index: 999; opacity: 0; transition: opacity 0.2s;
+    white-space: nowrap; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  /* SYNC STATUS BAR */
+  .sync-bar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    background: var(--amber-bg); border-bottom: 0.5px solid rgba(245,166,35,0.2);
+    font-size: 12px; color: var(--amber); display: none;
+  }
+  .sync-bar.visible { display: flex; }
+  .sync-bar svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
+
+  @media (min-width: 540px) {
+    .page { max-width: 540px; margin: 0 auto; }
+    .modal { border-radius: var(--radius); margin-bottom: 40px; }
+    .modal-overlay { align-items: center; }
+    .fab { right: calc(50% - 270px + 18px); }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">Stock Journal</div>
+    <div class="topbar-sub" id="topbarSub">Loading…</div>
+  </div>
+  <div class="topbar-actions">
+    <button onclick="syncNow()" style="background:none;border:none;cursor:pointer;padding:6px;" title="Sync">
+      <svg id="syncIcon" viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="sync-bar" id="syncBar">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span id="syncBarMsg">Unsaved changes — tap sync to save</span>
+</div>
+
+<!-- JOURNAL PAGE -->
+<div class="page active" id="page-journal">
+  <div class="filter-row">
+    <button class="filter-chip active" onclick="setMarket('ALL',this)">All</button>
+    <button class="filter-chip" onclick="setMarket('HK',this)">HK</button>
+    <button class="filter-chip" onclick="setMarket('PH',this)">PH</button>
+  </div>
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="search-input" id="searchInput" placeholder="Search ticker or notes…" oninput="renderJournal()" />
+  </div>
+  <div id="journalList"></div>
+</div>
+
+<!-- STATS PAGE -->
+<div class="page" id="page-stats">
+  <div class="stats-grid" id="statsGrid"></div>
+  <div id="sentimentBreakdown"></div>
+  <div id="recentEntries"></div>
+</div>
+
+<!-- SETTINGS PAGE -->
+<div class="page" id="page-settings">
+  <div class="section-title">Google Sheets sync</div>
+  <div class="settings-card">
+    <div class="settings-row">
+      <div class="settings-row-icon green">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">Sheet ID</div>
+        <div class="settings-row-sub" id="sheetIdDisplay">Not configured</div>
+      </div>
+      <button class="settings-row-action" onclick="openSheetModal()">Edit</button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+      </div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">API key</div>
+        <div class="settings-row-sub" id="apiKeyDisplay">Not configured</div>
+      </div>
+      <button class="settings-row-action" onclick="openApiModal()">Edit</button>
+    </div>
+    <div class="settings-row">
+      <div id="syncStatusDot" class="status-dot disconnected"></div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">Sync status</div>
+        <div class="settings-row-sub" id="syncStatusText">Not connected</div>
+      </div>
+      <button class="settings-row-action" onclick="syncNow()">Sync now</button>
+    </div>
+  </div>
+
+  <div class="section-title">Data</div>
+  <div class="settings-card">
+    <div class="settings-row">
+      <div class="settings-row-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">Export to JSON</div>
+        <div class="settings-row-sub">Download a backup file</div>
+      </div>
+      <button class="settings-row-action" onclick="exportJSON()">Export</button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-icon amber">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">Import from JSON</div>
+        <div class="settings-row-sub">Restore from a backup</div>
+      </div>
+      <label class="settings-row-action" style="cursor:pointer;">
+        Import
+        <input type="file" accept=".json" style="display:none" onchange="importJSON(event)" />
+      </label>
+    </div>
+  </div>
+
+  <div class="section-title">How to set up Google Sheets sync</div>
+  <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;font-size:13px;color:var(--text2);line-height:1.8;">
+    <b style="color:var(--text);display:block;margin-bottom:8px;">One-time setup (5 minutes)</b>
+    1. Go to <span style="color:var(--accent);">script.google.com</span> and create a new project<br>
+    2. Paste the Apps Script code (tap "Copy script" below)<br>
+    3. Click Deploy → New deployment → Web app<br>
+    4. Set "Who has access" to <b style="color:var(--text);">Anyone</b>, then Deploy<br>
+    5. Copy the Web App URL — paste it as your "Sheet ID" above<br>
+    6. Create a Google Sheet and copy its ID from the URL<br>
+    7. Paste the Sheet ID into the script's <code style="color:var(--accent);">SHEET_ID</code> constant
+    <br><br>
+    <button class="btn-primary" style="width:100%;" onclick="copyScript()">Copy Apps Script code</button>
+  </div>
+</div>
+
+<!-- BOTTOM TAB BAR -->
+<div class="tabbar">
+  <button class="tabbar-btn active" id="tab-journal" onclick="showPage('journal')">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Journal
+  </button>
+  <button class="tabbar-btn" id="tab-stats" onclick="showPage('stats')">
+    <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Stats
+  </button>
+  <button class="tabbar-btn" id="tab-settings" onclick="showPage('settings')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </button>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" onclick="openAddStockModal()" title="Add stock">
+  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ADD STOCK MODAL -->
+<div class="modal-overlay" id="addStockModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add stock</div>
+    <div class="modal-field">
+      <div class="modal-label">Ticker</div>
+      <input class="modal-input" id="newTicker" placeholder="e.g. 700 or SM" autocapitalize="characters" />
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Company name</div>
+      <input class="modal-input" id="newName" placeholder="e.g. Tencent Holdings" />
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Market</div>
+      <select class="modal-select" id="newMarket">
+        <option value="HK">HK — Hong Kong</option>
+        <option value="PH">PH — Philippines</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeModal('addStockModal')">Cancel</button>
+      <button class="btn-primary" onclick="addStock()">Add stock</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET ID MODAL -->
+<div class="modal-overlay" id="sheetModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Google Apps Script URL</div>
+    <div class="modal-field">
+      <div class="modal-label">Web App URL (from your deployment)</div>
+      <input class="modal-input" id="sheetUrlInput" placeholder="https://script.google.com/macros/s/…/exec" />
+    </div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeModal('sheetModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveSheetUrl()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="apiModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Access token</div>
+    <div class="modal-field">
+      <div class="modal-label">Secret token (set this in your Apps Script too)</div>
+      <input class="modal-input" id="apiKeyInput" placeholder="your-secret-token" type="password" />
+    </div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="closeModal('apiModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveApiKey()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORE = 'stockjournal_v1';
+const CONF = 'stockjournal_conf';
+
+const DEFAULT = [
+  { id:1, ticker:'700', name:'Tencent Holdings', market:'HK', entries:[
+    { id:1, date:'2026-06-06', sentiment:'bullish', text:'Broke above 50-day MA on strong volume. Next resistance at 400. RSI not yet overbought.' },
+    { id:2, date:'2026-05-30', sentiment:'watching', text:'Consolidating below 390. Waiting for clean weekly close above.' }
+  ]},
+  { id:2, ticker:'9988', name:'Alibaba Group', market:'HK', entries:[
+    { id:1, date:'2026-06-06', sentiment:'neutral', text:'Inside week. No clear direction. Waiting for a catalyst.' }
+  ]},
+  { id:3, ticker:'SM', name:'SM Investments', market:'PH', entries:[
+    { id:1, date:'2026-06-06', sentiment:'bullish', text:'Cup and handle forming on weekly. Handle looks clean. Target 1050 on breakout.' }
+  ]},
+  { id:4, ticker:'BPI', name:'Bank of the Philippine Islands', market:'PH', entries:[] }
+];
+
+function load() {
+  try { const d = localStorage.getItem(STORE); if(d) return JSON.parse(d); } catch(e){}
+  return { stocks: JSON.parse(JSON.stringify(DEFAULT)), nextSid:5, nextEid:10 };
+}
+function save() {
+  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid }));
+  setDirty(true);
+}
+function loadConf() {
+  try { return JSON.parse(localStorage.getItem(CONF)) || {}; } catch(e){ return {}; }
+}
+function saveConf() { localStorage.setItem(CONF, JSON.stringify(conf)); }
+
+let { stocks, nextSid, nextEid } = load();
+let conf = loadConf();
+let activeMarket = 'ALL';
+let openCards = new Set();
+let addingCards = new Set();
+let dirty = false;
+let currentPage = 'journal';
+
+function setDirty(v) {
+  dirty = v;
+  const bar = document.getElementById('syncBar');
+  if(v && conf.sheetUrl) { bar.classList.add('visible'); }
+  else { bar.classList.remove('visible'); }
+}
+
+function toast(msg, dur=2200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
+}
+
+function showPage(name) {
+  currentPage = name;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tabbar-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  const fab = document.getElementById('fab');
+  fab.style.display = name === 'journal' ? 'flex' : 'none';
+  if(name==='stats') renderStats();
+  if(name==='settings') renderSettings();
+}
+
+function weekLabel(dateStr) {
+  const d = new Date(dateStr+'T00:00:00');
+  const s = new Date(d); s.setDate(d.getDate()-d.getDay()+1);
+  return 'Wk '+s.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+
+function renderJournal() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const list = document.getElementById('journalList');
+  const filtered = stocks.filter(s=>{
+    const mm = activeMarket==='ALL' || s.market===activeMarket;
+    const ms = !q || s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || s.entries.some(e=>e.text.toLowerCase().includes(q));
+    return mm && ms;
+  });
+
+  const total = stocks.reduce((a,s)=>a+s.entries.length,0);
+  document.getElementById('topbarSub').textContent = `${stocks.length} tickers · ${total} entries`;
+
+  if(!filtered.length) {
+    list.innerHTML = `<div class="empty-card">No stocks found</div>`; return;
+  }
+
+  list.innerHTML = '';
+  filtered.forEach(stock=>{
+    const isOpen = openCards.has(stock.id);
+    const isAdding = addingCards.has(stock.id);
+    const div = document.createElement('div');
+    div.className='stock-card'+(isOpen?' open':'')+(isAdding?' adding':'');
+
+    const sorted = [...stock.entries].sort((a,b)=>b.date.localeCompare(a.date));
+    const today = new Date().toISOString().split('T')[0];
+
+    const sentMap={bullish:'Bullish',bearish:'Bearish',neutral:'Neutral',watching:'Watching'};
+
+    const entriesHTML = sorted.length===0
+      ? `<div style="padding:16px;text-align:center;font-size:13px;color:var(--text3);">No entries yet</div>`
+      : sorted.map(e=>`
+        <div class="entry-item">
+          <div class="entry-left">
+            <div class="entry-date">${new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</div>
+            <div class="entry-wk">${weekLabel(e.date)}</div>
+          </div>
+          <div class="entry-body">
+            <span class="sent-badge sent-${e.sentiment}">${sentMap[e.sentiment]||e.sentiment}</span>
+            <div class="entry-text">${e.text}</div>
+          </div>
+          <button class="del-btn" onclick="delEntry(${stock.id},${e.id})">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>`).join('');
+
+    div.innerHTML=`
+      <div class="stock-head" onclick="toggleCard(${stock.id})">
+        <span class="ticker-pill">${stock.ticker}</span>
+        <div class="stock-info">
+          <div class="stock-name-text">${stock.name}</div>
+          <div class="stock-meta">${stock.market} · ${stock.entries.length} entr${stock.entries.length===1?'y':'ies'}</div>
+        </div>
+        <button style="background:none;border:none;padding:6px;color:var(--text3);cursor:pointer;" onclick="event.stopPropagation();toggleAdding(${stock.id})" title="Add entry">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <svg class="chevron-icon" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="add-form">
+        <div class="form-row">
+          <input type="date" class="form-date" id="edate-${stock.id}" value="${today}" />
+          <select class="form-select" id="esent-${stock.id}">
+            <option value="bullish">Bullish</option>
+            <option value="bearish">Bearish</option>
+            <option value="neutral">Neutral</option>
+            <option value="watching">Watching</option>
+          </select>
+        </div>
+        <textarea class="form-textarea" id="etext-${stock.id}" placeholder="Your chart commentary…"></textarea>
+        <div class="form-btns">
+          <button class="btn-ghost" onclick="cancelAdding(${stock.id})">Cancel</button>
+          <button class="btn-primary" onclick="saveEntry(${stock.id})">Save entry</button>
+        </div>
+      </div>
+      <div class="entries-section">${entriesHTML}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function toggleCard(id) { openCards.has(id)?openCards.delete(id):openCards.add(id); renderJournal(); }
+function toggleAdding(id) {
+  addingCards.has(id)?addingCards.delete(id):addingCards.add(id);
+  if(addingCards.has(id)) openCards.add(id);
+  renderJournal();
+  if(addingCards.has(id)) setTimeout(()=>{const el=document.getElementById('etext-'+id);if(el)el.focus();},80);
+}
+function cancelAdding(id) { addingCards.delete(id); renderJournal(); }
+
+function saveEntry(sid) {
+  const date=document.getElementById('edate-'+sid).value;
+  const sentiment=document.getElementById('esent-'+sid).value;
+  const text=document.getElementById('etext-'+sid).value.trim();
+  if(!text) return;
+  const s=stocks.find(s=>s.id===sid);
+  s.entries.push({id:nextEid++,date,sentiment,text});
+  addingCards.delete(sid); openCards.add(sid);
+  save(); renderJournal(); toast('Entry saved');
+}
+
+function delEntry(sid,eid) {
+  const s=stocks.find(s=>s.id===sid);
+  s.entries=s.entries.filter(e=>e.id!==eid);
+  save(); renderJournal(); toast('Entry deleted');
+}
+
+function setMarket(m,btn) {
+  activeMarket=m;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  renderJournal();
+}
+
+function openAddStockModal() { document.getElementById('addStockModal').classList.add('open'); setTimeout(()=>document.getElementById('newTicker').focus(),100); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function addStock() {
+  const ticker=document.getElementById('newTicker').value.trim().toUpperCase();
+  const name=document.getElementById('newName').value.trim();
+  const market=document.getElementById('newMarket').value;
+  if(!ticker) return;
+  stocks.push({id:nextSid++,ticker,name:name||ticker,market,entries:[]});
+  document.getElementById('newTicker').value='';
+  document.getElementById('newName').value='';
+  closeModal('addStockModal');
+  save(); renderJournal(); toast('Stock added');
+}
+
+function renderStats() {
+  const total=stocks.reduce((a,s)=>a+s.entries.length,0);
+  const hk=stocks.filter(s=>s.market==='HK');
+  const ph=stocks.filter(s=>s.market==='PH');
+  const counts={bullish:0,bearish:0,neutral:0,watching:0};
+  stocks.forEach(s=>s.entries.forEach(e=>{if(counts[e.sentiment]!==undefined)counts[e.sentiment]++;}));
+
+  document.getElementById('statsGrid').innerHTML=`
+    <div class="stat-tile"><div class="stat-tile-label">Total tickers</div><div class="stat-tile-val">${stocks.length}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Total entries</div><div class="stat-tile-val">${total}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">HK tickers</div><div class="stat-tile-val">${hk.length}</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">PH tickers</div><div class="stat-tile-val">${ph.length}</div></div>
+  `;
+
+  const sentColors={bullish:'var(--green)',bearish:'var(--red)',neutral:'var(--text2)',watching:'var(--amber)'};
+  const sentLabels={bullish:'Bullish',bearish:'Bearish',neutral:'Neutral',watching:'Watching'};
+  const maxCount=Math.max(...Object.values(counts),1);
+
+  document.getElementById('sentimentBreakdown').innerHTML=`
+    <div style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:10px;">Sentiment breakdown</div>
+    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:12px;">
+    ${Object.entries(counts).map(([k,v])=>`
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:13px;color:${sentColors[k]};">${sentLabels[k]}</span>
+          <span style="font-size:13px;font-weight:500;color:var(--text);">${v}</span>
+        </div>
+        <div style="height:4px;background:var(--surface2);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${Math.round((v/maxCount)*100)}%;background:${sentColors[k]};border-radius:99px;transition:width 0.4s;"></div>
+        </div>
+      </div>`).join('')}
+    </div>
+  `;
+
+  const recent=[...stocks.flatMap(s=>s.entries.map(e=>({...e,ticker:s.ticker,market:s.market})))].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+  document.getElementById('recentEntries').innerHTML=`
+    <div style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:0.8px;text-transform:uppercase;margin:20px 0 10px;">Recent entries</div>
+    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+    ${recent.map((e,i)=>`
+      <div style="padding:12px 16px;${i<recent.length-1?'border-bottom:0.5px solid var(--border);':''}display:flex;gap:10px;align-items:flex-start;">
+        <span style="font-size:12px;font-weight:600;color:var(--text);background:var(--surface2);padding:3px 8px;border-radius:6px;flex-shrink:0;">${e.ticker}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.text}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  `;
+}
+
+function renderSettings() {
+  document.getElementById('sheetIdDisplay').textContent = conf.sheetUrl ? conf.sheetUrl.substring(0,40)+'…' : 'Not configured';
+  document.getElementById('apiKeyDisplay').textContent = conf.apiKey ? '••••••••' : 'Not configured';
+  const connected = !!(conf.sheetUrl && conf.apiKey);
+  document.getElementById('syncStatusDot').className = 'status-dot '+(connected?'connected':'disconnected');
+  document.getElementById('syncStatusText').textContent = conf.lastSync ? 'Last synced: '+new Date(conf.lastSync).toLocaleString() : (connected?'Ready to sync':'Configure Sheet URL and token first');
+}
+
+function openSheetModal() {
+  document.getElementById('sheetUrlInput').value = conf.sheetUrl||'';
+  document.getElementById('sheetModal').classList.add('open');
+}
+function saveSheetUrl() {
+  conf.sheetUrl = document.getElementById('sheetUrlInput').value.trim();
+  saveConf(); closeModal('sheetModal'); renderSettings(); toast('Sheet URL saved');
+}
+function openApiModal() {
+  document.getElementById('apiKeyInput').value = conf.apiKey||'';
+  document.getElementById('apiModal').classList.add('open');
+}
+function saveApiKey() {
+  conf.apiKey = document.getElementById('apiKeyInput').value.trim();
+  saveConf(); closeModal('apiModal'); renderSettings(); toast('Token saved');
+}
+
+async function syncNow() {
+  if(!conf.sheetUrl) { toast('Add your Sheet URL in Settings first'); showPage('settings'); return; }
+  const icon = document.getElementById('syncIcon');
+  icon.style.animation = 'spin 1s linear infinite';
+  icon.style.transformOrigin = 'center';
+  toast('Syncing…', 4000);
+  try {
+    const payload = { action:'sync', token: conf.apiKey||'', data: JSON.stringify(stocks) };
+    const res = await fetch(conf.sheetUrl, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if(json.status==='ok') {
+      conf.lastSync = new Date().toISOString();
+      saveConf(); setDirty(false); renderSettings(); toast('Synced to Google Sheets');
+    } else { toast('Sync error: '+(json.message||'unknown')); }
+  } catch(e) { toast('Sync failed — check your URL'); }
+  icon.style.animation='';
+}
+
+function exportJSON() {
+  const data = JSON.stringify({stocks,nextSid,nextEid},null,2);
+  const blob = new Blob([data],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`stock_journal_${new Date().toISOString().split('T')[0]}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Journal exported');
+}
+
+function importJSON(event) {
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try {
+      const d=JSON.parse(e.target.result);
+      if(!d.stocks||!Array.isArray(d.stocks)) throw new Error();
+      stocks=d.stocks; nextSid=d.nextSid||99; nextEid=d.nextEid||999;
+      save(); renderJournal(); toast(`Imported ${stocks.length} stocks`);
+    } catch(err) { toast('Import failed — invalid file'); }
+    event.target.value='';
+  };
+  reader.readAsText(file);
+}
+
+const APPS_SCRIPT = `// Stock Journal — Google Apps Script
+// 1. Replace SHEET_ID with your Google Sheet's ID
+// 2. Replace SECRET_TOKEN with a secret string of your choice
+// 3. Deploy as Web App (Anyone can access)
+
+const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
+const SECRET_TOKEN = 'YOUR_SECRET_TOKEN_HERE';
+const SHEET_NAME = 'Journal';
+
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents);
+    if (body.token !== SECRET_TOKEN) {
+      return respond({ status: 'error', message: 'Unauthorized' });
+    }
+    if (body.action === 'sync') {
+      const stocks = JSON.parse(body.data);
+      writeToSheet(stocks);
+      return respond({ status: 'ok' });
+    }
+    return respond({ status: 'error', message: 'Unknown action' });
+  } catch(err) {
+    return respond({ status: 'error', message: err.message });
+  }
+}
+
+function writeToSheet(stocks) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+  sheet.clearContents();
+  const headers = ['Ticker', 'Market', 'Company', 'Date', 'Week', 'Sentiment', 'Commentary'];
+  const rows = [headers];
+  stocks.forEach(stock => {
+    if (stock.entries.length === 0) {
+      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '']);
+    } else {
+      const sorted = stock.entries.slice().sort((a,b) => b.date.localeCompare(a.date));
+      sorted.forEach(e => {
+        const d = new Date(e.date + 'T00:00:00');
+        const wkStart = new Date(d);
+        wkStart.setDate(d.getDate() - d.getDay() + 1);
+        const wk = 'Wk ' + wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, e.sentiment, e.text]);
+      });
+    }
+  });
+  sheet.getRange(1, 1, rows.length, headers.length).setValues(rows);
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#1a73e8');
+  headerRange.setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function respond(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+function copyScript() {
+  navigator.clipboard.writeText(APPS_SCRIPT).then(()=>toast('Apps Script copied!')).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=APPS_SCRIPT; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); toast('Apps Script copied!');
+  });
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+  overlay.addEventListener('click',function(e){ if(e.target===this) this.classList.remove('open'); });
+});
+
+const style=document.createElement('style');
+style.textContent='@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(style);
+
+renderJournal();
+</script>
+</body>
+</html>
