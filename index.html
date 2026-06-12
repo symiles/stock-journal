@@ -1049,7 +1049,7 @@ async function syncNow() {
   const icon = document.getElementById('syncIcon');
   icon.style.animation = 'spin 1s linear infinite';
   icon.style.transformOrigin = 'center';
-  toast('Syncing…', 5000);
+  toast('Syncing…', 8000);
   try {
     const token = encodeURIComponent(conf.apiKey||'');
 
@@ -1062,7 +1062,7 @@ async function syncNow() {
       const remote = JSON.parse(json.data);
       const allDeletedIds = [...new Set([...deletedIds, ...(remote.deletedIds||[])])];
       const merged = mergeStocks(stocks, remote.stocks || [], allDeletedIds);
-      // Preserve local imgData after merge (remote never has it)
+      // Preserve local imgData after merge
       merged.forEach(mStock => {
         const lStock = stocks.find(s => s.ticker === mStock.ticker && s.market === mStock.market);
         if (lStock) {
@@ -1078,17 +1078,27 @@ async function syncNow() {
       nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
     }
 
-    // STEP 2: Push via GET — strip imgData to keep payload small
+    // STEP 2: Push metadata (counters + deletedIds) first
+    const metaData = encodeURIComponent(JSON.stringify({ nextSid, nextEid, deletedIds }));
+    await fetch(`${conf.sheetUrl}?action=pushmeta&token=${token}&data=${metaData}`, { method:'GET', mode:'no-cors' });
+
+    // STEP 3: Push each stock one at a time (keeps each URL small)
     const stocksForSync = stocks.map(s => ({
       ...s,
-      entries: s.entries.map(e => {
-        const { imgData, ...rest } = e;
-        return rest;
-      })
+      entries: s.entries.map(({ imgData, ...rest }) => rest) // strip images
     }));
-    const pushData = encodeURIComponent(JSON.stringify({ stocks: stocksForSync, nextSid, nextEid, deletedIds }));
-    const pushUrl = `${conf.sheetUrl}?action=push&token=${token}&data=${pushData}`;
-    await fetch(pushUrl, { method:'GET', mode:'no-cors' });
+
+    for (let i = 0; i < stocksForSync.length; i++) {
+      const stock = stocksForSync[i];
+      const stockData = encodeURIComponent(JSON.stringify(stock));
+      const pushUrl = `${conf.sheetUrl}?action=pushstock&token=${token}&data=${stockData}`;
+      await fetch(pushUrl, { method:'GET', mode:'no-cors' });
+      // Small delay to avoid rate limiting
+      if (i < stocksForSync.length - 1) await new Promise(r => setTimeout(r, 150));
+    }
+
+    // STEP 4: Tell server to finalize (write readable sheet)
+    await fetch(`${conf.sheetUrl}?action=finalize&token=${token}`, { method:'GET', mode:'no-cors' });
 
     save();
     renderJournal();
@@ -1186,13 +1196,81 @@ function doPost(e) {
   }
 }
 
-// GET: handles push (text-only, no images), pull, and image upload
+// GET: handles all sync actions
 function doGet(e) {
   if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
     return respond({ status: 'error', message: 'Unauthorized' });
   }
 
-  // PUSH via GET (images stripped, payload stays small)
+  // PULL: return full server data
+  if (e.parameter.action === 'pull') {
+    try {
+      const current = loadData();
+      return respond({ status: 'ok', data: JSON.stringify(current) });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+
+  // PUSHMETA: save counters and deletedIds, init staging
+  if (e.parameter.action === 'pushmeta') {
+    try {
+      const meta = JSON.parse(decodeURIComponent(e.parameter.data));
+      const current = loadData();
+      // Start a fresh staging area with current stocks preserved
+      const staging = {
+        stocks: [],
+        nextSid: Math.max(current.nextSid||0, meta.nextSid||0),
+        nextEid: Math.max(current.nextEid||0, meta.nextEid||0),
+        deletedIds: [...new Set([...(current.deletedIds||[]), ...(meta.deletedIds||[])])]
+      };
+      saveStaging(staging);
+      return respond({ status: 'ok' });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+
+  // PUSHSTOCK: add one stock to staging
+  if (e.parameter.action === 'pushstock') {
+    try {
+      const inStock = JSON.parse(decodeURIComponent(e.parameter.data));
+      const staging = loadStaging();
+      const current = loadData();
+      // Find matching stock in current data to merge entries
+      const existing = (current.stocks||[]).find(s => s.ticker === inStock.ticker && s.market === inStock.market);
+      const tombstones = staging.deletedIds || [];
+      if (existing) {
+        const entryMap = {};
+        existing.entries.forEach(e => { if(!tombstones.includes(e.id)) entryMap[e.id] = e; });
+        (inStock.entries||[]).forEach(e => { if(!tombstones.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e; });
+        inStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
+      } else {
+        inStock.entries = (inStock.entries||[]).filter(e => !tombstones.includes(e.id));
+      }
+      if (!tombstones.includes('stock_' + inStock.id)) {
+        staging.stocks.push(inStock);
+      }
+      saveStaging(staging);
+      return respond({ status: 'ok' });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+
+  // FINALIZE: promote staging to live data and write sheet
+  if (e.parameter.action === 'finalize') {
+    try {
+      const staging = loadStaging();
+      saveData(staging);
+      writeToSheet(staging.stocks);
+      return respond({ status: 'ok' });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+
+  // LEGACY PUSH (single GET, kept for fallback)
   if (e.parameter.action === 'push') {
     try {
       const incoming = JSON.parse(decodeURIComponent(e.parameter.data));
@@ -1201,16 +1279,6 @@ function doGet(e) {
       saveData(merged);
       writeToSheet(merged.stocks);
       return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // PULL: return current server data to device
-  if (e.parameter.action === 'pull') {
-    try {
-      const current = loadData();
-      return respond({ status: 'ok', data: JSON.stringify(current) });
     } catch(err) {
       return respond({ status: 'error', message: err.message });
     }
@@ -1246,6 +1314,23 @@ function saveData(data) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sheet = ss.getSheetByName(DATA_SHEET);
   if (!sheet) sheet = ss.insertSheet(DATA_SHEET);
+  sheet.getRange('A1').setValue(JSON.stringify(data));
+}
+
+// Staging sheet for chunked push
+function loadStaging() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName('SyncStaging');
+  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
+  const val = sheet.getRange('A1').getValue();
+  if (!val) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
+  return JSON.parse(val);
+}
+
+function saveStaging(data) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName('SyncStaging');
+  if (!sheet) sheet = ss.insertSheet('SyncStaging');
   sheet.getRange('A1').setValue(JSON.stringify(data));
 }
 
