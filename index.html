@@ -556,10 +556,10 @@ const DEFAULT = [
 
 function load() {
   try { const d = localStorage.getItem(STORE); if(d) return JSON.parse(d); } catch(e){}
-  return { stocks: JSON.parse(JSON.stringify(DEFAULT)), nextSid:5, nextEid:10 };
+  return { stocks: JSON.parse(JSON.stringify(DEFAULT)), nextSid:5, nextEid:10, deletedIds:[] };
 }
 function save() {
-  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid }));
+  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
   setDirty(true);
 }
 function loadConf() {
@@ -567,7 +567,8 @@ function loadConf() {
 }
 function saveConf() { localStorage.setItem(CONF, JSON.stringify(conf)); }
 
-let { stocks, nextSid, nextEid } = load();
+let { stocks, nextSid, nextEid, deletedIds } = load();
+deletedIds = deletedIds || [];
 let conf = loadConf();
 let activeMarket = 'ALL';
 let openCards = new Set();
@@ -795,11 +796,15 @@ async function saveEntry(sid) {
 function delEntry(sid,eid) {
   const s=stocks.find(s=>s.id===sid);
   s.entries=s.entries.filter(e=>e.id!==eid);
+  if(!deletedIds.includes(eid)) deletedIds.push(eid);
   save(); renderJournal(); toast('Entry deleted');
 }
 
 function deleteStock(sid, ticker) {
   if(!confirm(`Delete ${ticker} and all its entries? This cannot be undone.`)) return;
+  const s = stocks.find(s=>s.id===sid);
+  if(s) s.entries.forEach(e=>{ if(!deletedIds.includes(e.id)) deletedIds.push(e.id); });
+  if(!deletedIds.includes('stock_'+sid)) deletedIds.push('stock_'+sid);
   stocks=stocks.filter(s=>s.id!==sid);
   openCards.delete(sid); addingCards.delete(sid);
   save(); renderJournal(); toast(`${ticker} removed`);
@@ -1046,56 +1051,68 @@ async function syncNow() {
   icon.style.transformOrigin = 'center';
   toast('Syncing…', 5000);
   try {
-    // STEP 1: Push local data to server
-    const pushData = encodeURIComponent(JSON.stringify({ stocks, nextSid, nextEid }));
     const token = encodeURIComponent(conf.apiKey||'');
-    const pushUrl = `${conf.sheetUrl}?action=push&token=${token}&data=${pushData}`;
-    await fetch(pushUrl, { method:'GET', mode:'no-cors' });
 
-    // STEP 2: Pull merged data back from server
+    // STEP 1: Pull server data first
     const pullUrl = `${conf.sheetUrl}?action=pull&token=${token}&_=${Date.now()}`;
     const res = await fetch(pullUrl, { method:'GET' });
     const json = await res.json();
 
     if (json.status === 'ok' && json.data) {
       const remote = JSON.parse(json.data);
-      // Merge: combine stocks from both sides, merge entries by id
-      const merged = mergeStocks(stocks, remote.stocks || []);
+      // Merge remote into local, respecting tombstones
+      const allDeletedIds = [...new Set([...deletedIds, ...(remote.deletedIds||[])])];
+      const merged = mergeStocks(stocks, remote.stocks || [], allDeletedIds);
       stocks = merged;
+      deletedIds = allDeletedIds;
       nextSid = Math.max(nextSid, remote.nextSid || 0) + 1;
       nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
-      save();
-      renderJournal();
-      if(currentPage==='log') renderLog();
-      if(currentPage==='filter') renderFilter();
-      if(currentPage==='stats') renderStats();
     }
+
+    // STEP 2: Push merged local data back to server
+    const pushPayload = encodeURIComponent(JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
+    const pushUrl = `${conf.sheetUrl}?action=push&token=${token}&data=${pushPayload}`;
+    await fetch(pushUrl, { method:'GET', mode:'no-cors' });
+
+    save();
+    renderJournal();
+    if(currentPage==='log') renderLog();
+    if(currentPage==='filter') renderFilter();
+    if(currentPage==='stats') renderStats();
 
     conf.lastSync = new Date().toISOString();
     saveConf(); setDirty(false); renderSettings();
-    toast('Synced ✓ — data merged across devices');
+    toast('Synced ✓');
   } catch(e) {
     toast('Sync failed — check your URL');
   }
   icon.style.animation='';
 }
 
-function mergeStocks(local, remote) {
+function mergeStocks(local, remote, tombstones) {
   const merged = [...local];
   remote.forEach(rStock => {
+    // Skip stocks deleted locally
+    if(tombstones.includes('stock_'+rStock.id)) return;
     const lStock = merged.find(s => s.ticker === rStock.ticker && s.market === rStock.market);
     if (!lStock) {
-      // New stock from remote — add it
+      // New stock from remote — add it, filtering tombstoned entries
+      rStock.entries = (rStock.entries||[]).filter(e => !tombstones.includes(e.id));
       merged.push(rStock);
     } else {
-      // Merge entries: combine by entry id, remote wins on conflict
+      // Merge entries, skip tombstoned ones
       const entryMap = {};
       lStock.entries.forEach(e => entryMap[e.id] = e);
       rStock.entries.forEach(e => {
-        if (!entryMap[e.id]) entryMap[e.id] = e; // new entry from remote
+        if (!tombstones.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e;
       });
       lStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
+      if (rStock.name && rStock.name !== rStock.ticker) lStock.name = rStock.name;
     }
+  });
+  // Also apply tombstones to local entries
+  merged.forEach(s => {
+    s.entries = s.entries.filter(e => !tombstones.includes(e.id));
   });
   return merged;
 }
@@ -1196,24 +1213,32 @@ function saveData(data) {
 
 // Merge two datasets — combine stocks and entries by ticker+market and entry id
 function mergeData(server, incoming) {
+  const allDeletedIds = [...new Set([...(server.deletedIds||[]), ...(incoming.deletedIds||[])])];
   const mergedStocks = [...(server.stocks || [])];
+
   (incoming.stocks || []).forEach(iStock => {
+    if (allDeletedIds.includes('stock_' + iStock.id)) return;
     const sStock = mergedStocks.find(s => s.ticker === iStock.ticker && s.market === iStock.market);
     if (!sStock) {
+      iStock.entries = (iStock.entries||[]).filter(e => !allDeletedIds.includes(e.id));
       mergedStocks.push(iStock);
     } else {
       const entryMap = {};
       sStock.entries.forEach(e => entryMap[e.id] = e);
-      iStock.entries.forEach(e => { if (!entryMap[e.id]) entryMap[e.id] = e; });
+      (iStock.entries||[]).forEach(e => { if (!allDeletedIds.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e; });
       sStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
-      // Keep most complete stock info
       if (iStock.name && iStock.name !== iStock.ticker) sStock.name = iStock.name;
     }
   });
+
+  // Apply tombstones to all stocks
+  mergedStocks.forEach(s => { s.entries = (s.entries||[]).filter(e => !allDeletedIds.includes(e.id)); });
+
   return {
-    stocks: mergedStocks,
+    stocks: mergedStocks.filter(s => !allDeletedIds.includes('stock_' + s.id)),
     nextSid: Math.max(server.nextSid || 0, incoming.nextSid || 0) + 1,
-    nextEid: Math.max(server.nextEid || 0, incoming.nextEid || 0) + 1
+    nextEid: Math.max(server.nextEid || 0, incoming.nextEid || 0) + 1,
+    deletedIds: allDeletedIds
   };
 }
 
