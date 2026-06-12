@@ -267,6 +267,20 @@
   .sync-bar.visible { display: flex; }
   .sync-bar svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
 
+  .img-upload-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .img-upload-label { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 0.5px dashed var(--border2); border-radius: var(--radius-sm); font-size: 13px; color: var(--text2); cursor: pointer; flex: 1; }
+  .img-upload-label svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; flex-shrink: 0; }
+  .img-preview-wrap { position: relative; display: inline-block; }
+  .img-preview { width: 52px; height: 52px; object-fit: cover; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); display: block; }
+  .img-preview-remove { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--red); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .img-preview-remove svg { width: 10px; height: 10px; stroke: #fff; fill: none; stroke-width: 2.5; }
+  .entry-img { width: 100%; max-height: 200px; object-fit: cover; border-radius: var(--radius-sm); margin-top: 8px; cursor: pointer; border: 0.5px solid var(--border); display: block; }
+  .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 90dvh; border-radius: var(--radius); object-fit: contain; }
+  .lightbox-close { position: absolute; top: 16px; right: 16px; background: var(--surface2); border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .lightbox-close svg { width: 18px; height: 18px; stroke: var(--text); fill: none; stroke-width: 2; stroke-linecap: round; }
+
   @media (min-width: 540px) {
     .page { max-width: 540px; margin: 0 auto; }
     .modal { border-radius: var(--radius); margin-bottom: 40px; }
@@ -417,6 +431,14 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">
+    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <img id="lightboxImg" src="" alt="Chart" onclick="event.stopPropagation()" />
+</div>
 <!-- ADD STOCK MODAL -->
 <div class="modal-overlay" id="addStockModal">
   <div class="modal">
@@ -586,6 +608,10 @@ function renderJournal() {
           <div class="entry-body">
             <span class="sent-badge sent-${e.sentiment}">${sentMap[e.sentiment]||e.sentiment}</span>
             <div class="entry-text">${e.text}</div>
+            ${e.imgData ? `<img class="entry-img" src="${e.imgData}" alt="Chart" onclick="openLightbox('${e.imgData}')" />` : ''}
+            ${e.driveUrl ? `<a href="${e.driveUrl}" target="_blank" style="font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:4px;margin-top:6px;text-decoration:none;">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              View in Drive</a>` : ''}
           </div>
           <button class="del-btn" onclick="delEntry(${stock.id},${e.id})">
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -615,6 +641,14 @@ function renderJournal() {
           </select>
         </div>
         <textarea class="form-textarea" id="etext-${stock.id}" placeholder="Your chart commentary…"></textarea>
+        <div class="img-upload-row">
+          <label class="img-upload-label" for="eimg-${stock.id}">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Attach chart screenshot
+          </label>
+          <input type="file" accept="image/*" id="eimg-${stock.id}" style="display:none" onchange="previewImg(${stock.id}, this)" />
+          <div id="eimgpreview-${stock.id}"></div>
+        </div>
         <div class="form-btns">
           <button class="btn-ghost" onclick="cancelAdding(${stock.id})">Cancel</button>
           <button class="btn-primary" onclick="saveEntry(${stock.id})">Save entry</button>
@@ -634,13 +668,76 @@ function toggleAdding(id) {
 }
 function cancelAdding(id) { addingCards.delete(id); renderJournal(); }
 
-function saveEntry(sid) {
+function previewImg(sid, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const wrap = document.getElementById('eimgpreview-'+sid);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    wrap.innerHTML = `
+      <div class="img-preview-wrap">
+        <img class="img-preview" src="${e.target.result}" />
+        <button class="img-preview-remove" onclick="removeImg(${sid})">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImg(sid) {
+  document.getElementById('eimgpreview-'+sid).innerHTML = '';
+  document.getElementById('eimg-'+sid).value = '';
+}
+
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightboxImg').src = '';
+}
+
+async function uploadToDrive(base64Data, filename) {
+  if (!conf.sheetUrl) return null;
+  try {
+    const token = encodeURIComponent(conf.apiKey||'');
+    const nameEnc = encodeURIComponent(filename);
+    const dataEnc = encodeURIComponent(base64Data);
+    const url = `${conf.sheetUrl}?action=upload&token=${token}&filename=${nameEnc}&data=${dataEnc}`;
+    const res = await fetch(url, { method:'GET', mode:'no-cors' });
+    return null;
+  } catch(e) { return null; }
+}
+
+async function saveEntry(sid) {
   const date=document.getElementById('edate-'+sid).value;
   const sentiment=document.getElementById('esent-'+sid).value;
   const text=document.getElementById('etext-'+sid).value.trim();
   if(!text) return;
+
+  const imgInput = document.getElementById('eimg-'+sid);
+  const file = imgInput && imgInput.files[0];
+
+  let imgData = null;
+  let driveUrl = null;
+
+  if(file) {
+    toast('Saving entry…', 5000);
+    imgData = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsDataURL(file);
+    });
+    if(conf.sheetUrl) {
+      const filename = `${sid}_${date}_${Date.now()}.${file.name.split('.').pop()}`;
+      driveUrl = await uploadToDrive(imgData.split(',')[1], filename);
+    }
+  }
+
   const s=stocks.find(s=>s.id===sid);
-  s.entries.push({id:nextEid++,date,sentiment,text});
+  s.entries.push({id:nextEid++, date, sentiment, text, imgData, driveUrl});
   addingCards.delete(sid); openCards.add(sid);
   save(); renderJournal(); toast('Entry saved');
 }
@@ -790,30 +887,49 @@ function importJSON(event) {
   reader.readAsText(file);
 }
 
-const APPS_SCRIPT = `// Stock Journal — Google Apps Script
-// 1. Replace SHEET_ID with your Google Sheet's ID
-// 2. Replace SECRET_TOKEN with a secret string of your choice
-// 3. Deploy as Web App (Anyone can access)
-
-const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE';
-const SECRET_TOKEN = 'YOUR_SECRET_TOKEN_HERE';
+const APPS_SCRIPT = `// Stock Journal — Google Apps Script (with Drive image upload)
+const SHEET_ID = '1yHAVijHwnpNMsl4sjAZosJcg397xy6tiSLo57CCBMm78FV7Owhbk5bea';
+const SECRET_TOKEN = 'Livermore';
 const SHEET_NAME = 'Journal';
+const DRIVE_FOLDER = 'Stock Journal Charts';
 
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    if (body.token !== SECRET_TOKEN) {
-      return respond({ status: 'error', message: 'Unauthorized' });
-    }
-    if (body.action === 'sync') {
-      const stocks = JSON.parse(body.data);
+function doGet(e) {
+  if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
+    return respond({ status: 'error', message: 'Unauthorized' });
+  }
+  if (e.parameter.action === 'sync') {
+    try {
+      const stocks = JSON.parse(decodeURIComponent(e.parameter.data));
       writeToSheet(stocks);
       return respond({ status: 'ok' });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
     }
-    return respond({ status: 'error', message: 'Unknown action' });
-  } catch(err) {
-    return respond({ status: 'error', message: err.message });
   }
+  if (e.parameter.action === 'upload') {
+    try {
+      const filename = decodeURIComponent(e.parameter.filename);
+      const base64 = decodeURIComponent(e.parameter.data);
+      const url = saveImageToDrive(filename, base64);
+      return respond({ status: 'ok', url: url });
+    } catch(err) {
+      return respond({ status: 'error', message: err.message });
+    }
+  }
+  return respond({ status: 'ok', message: 'Stock Journal API running' });
+}
+
+function saveImageToDrive(filename, base64Data) {
+  const folders = DriveApp.getFoldersByName(DRIVE_FOLDER);
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(DRIVE_FOLDER);
+  const ext = filename.split('.').pop().toLowerCase();
+  const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp' };
+  const mimeType = mimeMap[ext] || 'image/jpeg';
+  const decoded = Utilities.base64Decode(base64Data);
+  const blob = Utilities.newBlob(decoded, mimeType, filename);
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/file/d/' + file.getId() + '/view';
 }
 
 function writeToSheet(stocks) {
@@ -821,11 +937,11 @@ function writeToSheet(stocks) {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
   sheet.clearContents();
-  const headers = ['Ticker', 'Market', 'Company', 'Date', 'Week', 'Sentiment', 'Commentary'];
+  const headers = ['Ticker','Market','Company','Date','Week','Sentiment','Commentary','Chart'];
   const rows = [headers];
   stocks.forEach(stock => {
     if (stock.entries.length === 0) {
-      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '']);
+      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '', '']);
     } else {
       const sorted = stock.entries.slice().sort((a,b) => b.date.localeCompare(a.date));
       sorted.forEach(e => {
@@ -833,15 +949,15 @@ function writeToSheet(stocks) {
         const wkStart = new Date(d);
         wkStart.setDate(d.getDate() - d.getDay() + 1);
         const wk = 'Wk ' + wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, e.sentiment, e.text]);
+        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, e.sentiment, e.text, e.driveUrl || '']);
       });
     }
   });
-  sheet.getRange(1, 1, rows.length, headers.length).setValues(rows);
-  const headerRange = sheet.getRange(1, 1, 1, headers.length);
-  headerRange.setFontWeight('bold');
-  headerRange.setBackground('#1a73e8');
-  headerRange.setFontColor('#ffffff');
+  sheet.getRange(1,1,rows.length,headers.length).setValues(rows);
+  const hr = sheet.getRange(1,1,1,headers.length);
+  hr.setFontWeight('bold');
+  hr.setBackground('#1a73e8');
+  hr.setFontColor('#ffffff');
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, headers.length);
 }
