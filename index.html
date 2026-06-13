@@ -363,14 +363,14 @@
 
 <!-- SETTINGS PAGE -->
 <div class="page" id="page-settings">
-  <div class="section-title">Google Sheets sync</div>
+  <div class="section-title">Vercel sync</div>
   <div class="settings-card">
     <div class="settings-row">
       <div class="settings-row-icon green">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       </div>
       <div class="settings-row-body">
-        <div class="settings-row-label">Sheet ID</div>
+        <div class="settings-row-label">API URL</div>
         <div class="settings-row-sub" id="sheetIdDisplay">Not configured</div>
       </div>
       <button class="settings-row-action" onclick="openSheetModal()">Edit</button>
@@ -380,7 +380,7 @@
         <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
       </div>
       <div class="settings-row-body">
-        <div class="settings-row-label">API key</div>
+        <div class="settings-row-label">Secret token</div>
         <div class="settings-row-sub" id="apiKeyDisplay">Not configured</div>
       </div>
       <button class="settings-row-action" onclick="openApiModal()">Edit</button>
@@ -422,18 +422,17 @@
     </div>
   </div>
 
-  <div class="section-title">How to set up Google Sheets sync</div>
+  <div class="section-title">How to set up Vercel sync</div>
   <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;font-size:13px;color:var(--text2);line-height:1.8;">
     <b style="color:var(--text);display:block;margin-bottom:8px;">One-time setup (5 minutes)</b>
-    1. Go to <span style="color:var(--accent);">script.google.com</span> and create a new project<br>
-    2. Paste the Apps Script code (tap "Copy script" below)<br>
-    3. Click Deploy → New deployment → Web app<br>
-    4. Set "Who has access" to <b style="color:var(--text);">Anyone</b>, then Deploy<br>
-    5. Copy the Web App URL — paste it as your "Sheet ID" above<br>
-    6. Create a Google Sheet and copy its ID from the URL<br>
-    7. Paste the Sheet ID into the script's <code style="color:var(--accent);">SHEET_ID</code> constant
-    <br><br>
-    <button class="btn-primary" style="width:100%;" onclick="copyScript()">Copy Apps Script code</button>
+    1. Go to <span style="color:var(--accent);">github.com</span> → create a new repo called <b style="color:var(--text);">stock-journal-api</b><br>
+    2. Upload the <b style="color:var(--text);">stock-journal-api</b> folder files (api/sync.js, vercel.json, package.json)<br>
+    3. Go to <span style="color:var(--accent);">vercel.com</span> → New Project → Import that repo → Deploy<br>
+    4. In Vercel dashboard → Storage → Create KV Database → Connect to project<br>
+    5. In Vercel dashboard → Settings → Environment Variables → add <b style="color:var(--text);">SECRET_TOKEN</b> = <b style="color:var(--text);">Livermore</b><br>
+    6. Redeploy once (Deployments → Redeploy)<br>
+    7. Copy your URL: <b style="color:var(--text);">https://your-project.vercel.app/api/sync</b><br>
+    8. Paste it above in API URL → enter your token → Sync now
   </div>
 </div>
 
@@ -508,10 +507,10 @@
 <div class="modal-overlay" id="sheetModal">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">Google Apps Script URL</div>
+    <div class="modal-title">Vercel API URL</div>
     <div class="modal-field">
-      <div class="modal-label">Web App URL (from your deployment)</div>
-      <input class="modal-input" id="sheetUrlInput" placeholder="https://script.google.com/macros/s/…/exec" />
+      <div class="modal-label">Your Vercel API URL</div>
+      <input class="modal-input" id="sheetUrlInput" placeholder="https://your-project.vercel.app/api/sync" />
     </div>
     <div class="modal-btns">
       <button class="btn-ghost" onclick="closeModal('sheetModal')">Cancel</button>
@@ -1045,24 +1044,27 @@ function saveApiKey() {
 }
 
 async function syncNow() {
-  if(!conf.sheetUrl) { toast('Add your Sheet URL in Settings first'); showPage('settings'); return; }
+  if(!conf.sheetUrl) { toast('Add your API URL in Settings first'); showPage('settings'); return; }
   const icon = document.getElementById('syncIcon');
   icon.style.animation = 'spin 1s linear infinite';
   icon.style.transformOrigin = 'center';
-  toast('Syncing…', 8000);
+  toast('Syncing…', 6000);
   try {
-    const token = encodeURIComponent(conf.apiKey||'');
+    const headers = { 'Content-Type': 'application/json' };
 
-    // STEP 1: Pull server data first
-    const pullUrl = `${conf.sheetUrl}?action=pull&token=${token}&_=${Date.now()}`;
-    const res = await fetch(pullUrl, { method:'GET' });
-    const json = await res.json();
+    // STEP 1: Pull latest from server
+    const pullRes = await fetch(conf.sheetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'pull', token: conf.apiKey || '' })
+    });
+    const pullJson = await pullRes.json();
 
-    if (json.status === 'ok' && json.data) {
-      const remote = JSON.parse(json.data);
+    if (pullJson.status === 'ok' && pullJson.data) {
+      const remote = JSON.parse(pullJson.data);
       const allDeletedIds = [...new Set([...deletedIds, ...(remote.deletedIds||[])])];
       const merged = mergeStocks(stocks, remote.stocks || [], allDeletedIds);
-      // Preserve local imgData after merge
+      // Preserve local imgData — remote never stores images
       merged.forEach(mStock => {
         const lStock = stocks.find(s => s.ticker === mStock.ticker && s.market === mStock.market);
         if (lStock) {
@@ -1078,27 +1080,23 @@ async function syncNow() {
       nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
     }
 
-    // STEP 2: Push metadata (counters + deletedIds) first
-    const metaData = encodeURIComponent(JSON.stringify({ nextSid, nextEid, deletedIds }));
-    await fetch(`${conf.sheetUrl}?action=pushmeta&token=${token}&data=${metaData}`, { method:'GET', mode:'no-cors' });
-
-    // STEP 3: Push each stock one at a time (keeps each URL small)
+    // STEP 2: Push merged data (strip images — text only)
     const stocksForSync = stocks.map(s => ({
       ...s,
-      entries: s.entries.map(({ imgData, ...rest }) => rest) // strip images
+      entries: s.entries.map(({ imgData, ...rest }) => rest)
     }));
 
-    for (let i = 0; i < stocksForSync.length; i++) {
-      const stock = stocksForSync[i];
-      const stockData = encodeURIComponent(JSON.stringify(stock));
-      const pushUrl = `${conf.sheetUrl}?action=pushstock&token=${token}&data=${stockData}`;
-      await fetch(pushUrl, { method:'GET', mode:'no-cors' });
-      // Small delay to avoid rate limiting
-      if (i < stocksForSync.length - 1) await new Promise(r => setTimeout(r, 150));
-    }
-
-    // STEP 4: Tell server to finalize (write readable sheet)
-    await fetch(`${conf.sheetUrl}?action=finalize&token=${token}`, { method:'GET', mode:'no-cors' });
+    const pushRes = await fetch(conf.sheetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        action: 'push',
+        token: conf.apiKey || '',
+        payload: { stocks: stocksForSync, nextSid, nextEid, deletedIds }
+      })
+    });
+    const pushJson = await pushRes.json();
+    if (pushJson.status !== 'ok') throw new Error(pushJson.message || 'Push failed');
 
     save();
     renderJournal();
@@ -1110,7 +1108,8 @@ async function syncNow() {
     saveConf(); setDirty(false); renderSettings();
     toast('Synced ✓');
   } catch(e) {
-    toast('Sync failed — check your URL');
+    console.error('Sync error:', e);
+    toast('Sync failed — check your API URL');
   }
   icon.style.animation='';
 }
