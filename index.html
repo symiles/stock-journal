@@ -565,11 +565,20 @@ const DEFAULT = [
 
 function load() {
   try { const d = localStorage.getItem(STORE); if(d) return JSON.parse(d); } catch(e){}
-  return { stocks: JSON.parse(JSON.stringify(DEFAULT)), nextSid:5, nextEid:10, deletedIds:[] };
+  return { stocks: [], nextSid:1, nextEid:1, deletedIds:[] };
 }
 function save() {
   localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
   setDirty(true);
+  scheduleAutoSync();
+}
+
+let autoSyncTimer = null;
+function scheduleAutoSync() {
+  if (!conf.sheetUrl || !conf.apiKey) return;
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  // Wait 2s after the last change, then sync
+  autoSyncTimer = setTimeout(() => { syncNow(); }, 2000);
 }
 function loadConf() {
   try { return JSON.parse(localStorage.getItem(CONF)) || {}; } catch(e){ return {}; }
@@ -1480,6 +1489,24 @@ style.textContent='@keyframes spin{from{transform:rotate(0deg)}to{transform:rota
 document.head.appendChild(style);
 
 renderJournal();
+
+// Auto-sync on app open (if configured)
+if (conf.sheetUrl && conf.apiKey) {
+  setTimeout(() => { syncNow(); }, 800);
+}
+
+// Auto-sync when app regains focus (e.g. switching back to it)
+let lastFocusSync = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && conf.sheetUrl && conf.apiKey) {
+    // Throttle: only auto-sync if 30s since last
+    if (Date.now() - lastFocusSync > 30000) {
+      lastFocusSync = Date.now();
+      syncNow();
+    }
+  }
+});
+
 </script>
 </body>
 </html>
