@@ -574,21 +574,30 @@ const DEFAULT = [
 ];
 
 function load() {
-  try { const d = localStorage.getItem(STORE); if(d) return JSON.parse(d); } catch(e){}
-  return { stocks: [], nextSid:1, nextEid:1, deletedIds:[] };
+  try {
+    const d = localStorage.getItem(STORE);
+    if(d) {
+      const parsed = JSON.parse(d);
+      // Migrate old deletedIds format to deletedAt if present
+      if (!parsed.deletedAt) parsed.deletedAt = {};
+      return parsed;
+    }
+  } catch(e){}
+  return { stocks: [], nextSid:1, nextEid:1, deletedAt:{} };
 }
 function save() {
-  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
+  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedAt }));
   setDirty(true);
   scheduleAutoSync();
 }
 
 // Persist locally WITHOUT triggering another auto-sync (used inside syncNow)
 function saveLocal() {
-  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
+  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedAt }));
 }
 
 let autoSyncTimer = null;
+let syncInProgress = false;
 function scheduleAutoSync() {
   if (!conf.sheetUrl || !conf.apiKey) return;
   if (autoSyncTimer) clearTimeout(autoSyncTimer);
@@ -600,8 +609,8 @@ function loadConf() {
 }
 function saveConf() { localStorage.setItem(CONF, JSON.stringify(conf)); }
 
-let { stocks, nextSid, nextEid, deletedIds } = load();
-deletedIds = deletedIds || [];
+let { stocks, nextSid, nextEid, deletedAt } = load();
+deletedAt = deletedAt || {};
 let conf = loadConf();
 let activeMarket = 'ALL';
 let openCards = new Set();
@@ -829,15 +838,17 @@ async function saveEntry(sid) {
 function delEntry(sid,eid) {
   const s=stocks.find(s=>s.id===sid);
   s.entries=s.entries.filter(e=>e.id!==eid);
-  if(!deletedIds.includes(eid)) deletedIds.push(eid);
+  deletedAt['entry_'+eid] = Date.now();
   save(); renderJournal(); toast('Entry deleted');
 }
 
 function deleteStock(sid, ticker) {
   if(!confirm(`Delete ${ticker} and all its entries? This cannot be undone.`)) return;
   const s = stocks.find(s=>s.id===sid);
-  if(s) s.entries.forEach(e=>{ if(!deletedIds.includes(e.id)) deletedIds.push(e.id); });
-  if(!deletedIds.includes('stock_'+sid)) deletedIds.push('stock_'+sid);
+  if(s) {
+    s.entries.forEach(e=>{ deletedAt['entry_'+e.id] = Date.now(); });
+    deletedAt['stock_'+s.market+':'+s.ticker] = Date.now();
+  }
   stocks=stocks.filter(s=>s.id!==sid);
   openCards.delete(sid); addingCards.delete(sid);
   save(); renderJournal(); toast(`${ticker} removed`);
@@ -1079,6 +1090,8 @@ function saveApiKey() {
 
 async function syncNow() {
   if(!conf.sheetUrl) { toast('Add your API URL in Settings first'); showPage('settings'); return; }
+  if (syncInProgress) return;
+  syncInProgress = true;
   const icon = document.getElementById('syncIcon');
   icon.style.animation = 'spin 1s linear infinite';
   icon.style.transformOrigin = 'center';
@@ -1094,27 +1107,34 @@ async function syncNow() {
     });
     const pullJson = await pullRes.json();
 
+    let remote = { stocks: [], nextSid: 1, nextEid: 1, deletedAt: {} };
     if (pullJson.status === 'ok' && pullJson.data) {
-      const remote = JSON.parse(pullJson.data);
-      const allDeletedIds = [...new Set([...deletedIds, ...(remote.deletedIds||[])])];
-      const merged = mergeStocks(stocks, remote.stocks || [], allDeletedIds);
-      // Preserve local imgData — remote never stores images
-      merged.forEach(mStock => {
-        const lStock = stocks.find(s => s.ticker === mStock.ticker && s.market === mStock.market);
-        if (lStock) {
-          mStock.entries.forEach(mEntry => {
-            const lEntry = lStock.entries.find(e => e.id === mEntry.id);
-            if (lEntry && lEntry.imgData) mEntry.imgData = lEntry.imgData;
-          });
-        }
-      });
-      stocks = merged;
-      deletedIds = allDeletedIds;
-      nextSid = Math.max(nextSid, remote.nextSid || 0) + 1;
-      nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
+      remote = JSON.parse(pullJson.data);
     }
 
-    // STEP 2: Push merged data (strip images — text only)
+    // Merge using timestamps — newest wins, deletions tracked by time
+    const merged = mergeByTimestamp(
+      { stocks, deletedAt },
+      { stocks: remote.stocks || [], deletedAt: remote.deletedAt || {} }
+    );
+
+    // Preserve local images
+    merged.stocks.forEach(mStock => {
+      const lStock = stocks.find(s => s.ticker === mStock.ticker && s.market === mStock.market);
+      if (lStock) {
+        mStock.entries.forEach(mEntry => {
+          const lEntry = lStock.entries.find(e => e.id === mEntry.id);
+          if (lEntry && lEntry.imgData) mEntry.imgData = lEntry.imgData;
+        });
+      }
+    });
+
+    stocks = merged.stocks;
+    deletedAt = merged.deletedAt;
+    nextSid = Math.max(nextSid, remote.nextSid || 0) + 1;
+    nextEid = Math.max(nextEid, remote.nextEid || 0) + 1;
+
+    // STEP 2: Push merged result back (strip images)
     const stocksForSync = stocks.map(s => ({
       ...s,
       entries: s.entries.map(({ imgData, ...rest }) => rest)
@@ -1124,9 +1144,9 @@ async function syncNow() {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        action: 'push',
+        action: 'replace',
         token: conf.apiKey || '',
-        payload: { stocks: stocksForSync, nextSid, nextEid, deletedIds }
+        payload: { stocks: stocksForSync, nextSid, nextEid, deletedAt }
       })
     });
     const pushJson = await pushRes.json();
@@ -1146,34 +1166,54 @@ async function syncNow() {
     toast('Sync failed — check your API URL');
   }
   icon.style.animation='';
+  syncInProgress = false;
 }
 
-function mergeStocks(local, remote, tombstones) {
-  const merged = [...local];
-  remote.forEach(rStock => {
-    // Skip stocks deleted locally
-    if(tombstones.includes('stock_'+rStock.id)) return;
-    const lStock = merged.find(s => s.ticker === rStock.ticker && s.market === rStock.market);
-    if (!lStock) {
-      // New stock from remote — add it, filtering tombstoned entries
-      rStock.entries = (rStock.entries||[]).filter(e => !tombstones.includes(e.id));
-      merged.push(rStock);
-    } else {
-      // Merge entries, skip tombstoned ones
-      const entryMap = {};
-      lStock.entries.forEach(e => entryMap[e.id] = e);
-      rStock.entries.forEach(e => {
-        if (!tombstones.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e;
+// Timestamp-based merge. Each entry carries its own data; deletions are recorded
+// in deletedAt as { id: timestamp }. An item is deleted only if its deletion
+// timestamp is NEWER than the item itself. This makes wiping impossible:
+// an empty device has no newer timestamps, so it can't remove the server's data.
+function mergeByTimestamp(a, b) {
+  const deletedAt = {};
+  [a.deletedAt || {}, b.deletedAt || {}].forEach(d => {
+    Object.keys(d).forEach(k => {
+      deletedAt[k] = Math.max(deletedAt[k] || 0, d[k]);
+    });
+  });
+
+  // Build a map of stocks by ticker+market
+  const stockMap = {};
+  function ingest(stockList) {
+    (stockList || []).forEach(s => {
+      const key = s.market + ':' + s.ticker;
+      if (!stockMap[key]) {
+        stockMap[key] = { ...s, entries: [] };
+      }
+      const target = stockMap[key];
+      if (s.name && s.name !== s.ticker) target.name = s.name;
+      // Merge entries by id, newest content wins
+      s.entries.forEach(e => {
+        const existing = target.entries.find(x => x.id === e.id);
+        if (!existing) {
+          target.entries.push(e);
+        }
       });
-      lStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
-      if (rStock.name && rStock.name !== rStock.ticker) lStock.name = rStock.name;
-    }
+    });
+  }
+  ingest(a.stocks);
+  ingest(b.stocks);
+
+  // Apply deletions: remove entries/stocks whose deletion timestamp exists
+  const result = [];
+  Object.values(stockMap).forEach(s => {
+    const stockKey = 'stock_' + s.market + ':' + s.ticker;
+    if (deletedAt[stockKey]) return; // stock was deleted
+    s.entries = s.entries.filter(e => !deletedAt['entry_' + e.id]);
+    s.entries.sort((x, y) => y.date.localeCompare(x.date));
+    result.push(s);
   });
-  // Also apply tombstones to local entries
-  merged.forEach(s => {
-    s.entries = s.entries.filter(e => !tombstones.includes(e.id));
-  });
-  return merged;
+
+  return { stocks: result, deletedAt };
 }
 
 async function resetAndSync() {
@@ -1183,7 +1223,7 @@ async function resetAndSync() {
   stocks = [];
   nextSid = 1;
   nextEid = 1;
-  deletedIds = [];
+  deletedAt = {};
   openCards.clear();
   addingCards.clear();
   localStorage.removeItem(STORE);
@@ -1200,7 +1240,7 @@ async function resetAndSync() {
       stocks = remote.stocks || [];
       nextSid = remote.nextSid || 1;
       nextEid = remote.nextEid || 1;
-      deletedIds = remote.deletedIds || [];
+      deletedAt = remote.deletedAt || {};
       saveLocal();
       renderJournal();
       if(currentPage==='log') renderLog();
@@ -1223,7 +1263,7 @@ async function wipeServerAndUpload() {
   if (!confirm('This will REPLACE everything on the server with this device\'s data. Use this on the device that has your correct entries. Continue?')) return;
   if (autoSyncTimer) clearTimeout(autoSyncTimer);
   // Clear local tombstones so nothing is hidden
-  deletedIds = [];
+  deletedAt = {};
   saveLocal();
   toast('Uploading this device as source of truth…', 5000);
   try {
@@ -1237,7 +1277,7 @@ async function wipeServerAndUpload() {
       body: JSON.stringify({
         action: 'replace',
         token: conf.apiKey || '',
-        payload: { stocks: stocksForSync, nextSid, nextEid, deletedIds: [] }
+        payload: { stocks: stocksForSync, nextSid, nextEid, deletedAt: {} }
       })
     });
     const json = await res.json();
@@ -1271,7 +1311,7 @@ function importJSON(event) {
       const d=JSON.parse(e.target.result);
       if(!d.stocks||!Array.isArray(d.stocks)) throw new Error();
       stocks=d.stocks; nextSid=d.nextSid||99; nextEid=d.nextEid||999;
-      deletedIds=[]; // clear tombstones — imported data is the source of truth
+      deletedAt={}; // clear tombstones — imported data is the source of truth
       saveLocal(); renderJournal(); toast(`Imported ${stocks.length} stocks`);
     } catch(err) { toast('Import failed — invalid file'); }
     event.target.value='';
@@ -1279,258 +1319,7 @@ function importJSON(event) {
   reader.readAsText(file);
 }
 
-const APPS_SCRIPT = `// Stock Journal — Google Apps Script (Two-way sync)
-const SHEET_ID = '1yHAVijHwnpNMsl4sjAZosJcg397xy6tiSLo57CCBMm78FV7Owhbk5bea';
-const SECRET_TOKEN = 'Livermore';
-const SHEET_NAME = 'Journal';
-const DATA_SHEET = 'SyncData';
-const DRIVE_FOLDER = 'Stock Journal Charts';
-
-// POST: fallback (kept for compatibility)
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    if (!body.token || body.token !== SECRET_TOKEN) {
-      return respond({ status: 'error', message: 'Unauthorized' });
-    }
-    if (body.action === 'push') {
-      const incoming = { stocks: body.stocks, nextSid: body.nextSid, nextEid: body.nextEid, deletedIds: body.deletedIds || [] };
-      const current = loadData();
-      const merged = mergeData(current, incoming);
-      saveData(merged);
-      writeToSheet(merged.stocks);
-      return respond({ status: 'ok' });
-    }
-    return respond({ status: 'error', message: 'Unknown action' });
-  } catch(err) {
-    return respond({ status: 'error', message: err.message });
-  }
-}
-
-// GET: handles all sync actions
-function doGet(e) {
-  if (!e.parameter.token || e.parameter.token !== SECRET_TOKEN) {
-    return respond({ status: 'error', message: 'Unauthorized' });
-  }
-
-  // PULL: return full server data
-  if (e.parameter.action === 'pull') {
-    try {
-      const current = loadData();
-      return respond({ status: 'ok', data: JSON.stringify(current) });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // PUSHMETA: save counters and deletedIds, init staging
-  if (e.parameter.action === 'pushmeta') {
-    try {
-      const meta = JSON.parse(decodeURIComponent(e.parameter.data));
-      const current = loadData();
-      // Start a fresh staging area with current stocks preserved
-      const staging = {
-        stocks: [],
-        nextSid: Math.max(current.nextSid||0, meta.nextSid||0),
-        nextEid: Math.max(current.nextEid||0, meta.nextEid||0),
-        deletedIds: [...new Set([...(current.deletedIds||[]), ...(meta.deletedIds||[])])]
-      };
-      saveStaging(staging);
-      return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // PUSHSTOCK: add one stock to staging
-  if (e.parameter.action === 'pushstock') {
-    try {
-      const inStock = JSON.parse(decodeURIComponent(e.parameter.data));
-      const staging = loadStaging();
-      const current = loadData();
-      // Find matching stock in current data to merge entries
-      const existing = (current.stocks||[]).find(s => s.ticker === inStock.ticker && s.market === inStock.market);
-      const tombstones = staging.deletedIds || [];
-      if (existing) {
-        const entryMap = {};
-        existing.entries.forEach(e => { if(!tombstones.includes(e.id)) entryMap[e.id] = e; });
-        (inStock.entries||[]).forEach(e => { if(!tombstones.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e; });
-        inStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
-      } else {
-        inStock.entries = (inStock.entries||[]).filter(e => !tombstones.includes(e.id));
-      }
-      if (!tombstones.includes('stock_' + inStock.id)) {
-        staging.stocks.push(inStock);
-      }
-      saveStaging(staging);
-      return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // FINALIZE: promote staging to live data and write sheet
-  if (e.parameter.action === 'finalize') {
-    try {
-      const staging = loadStaging();
-      saveData(staging);
-      writeToSheet(staging.stocks);
-      return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // LEGACY PUSH (single GET, kept for fallback)
-  if (e.parameter.action === 'push') {
-    try {
-      const incoming = JSON.parse(decodeURIComponent(e.parameter.data));
-      const current = loadData();
-      const merged = mergeData(current, incoming);
-      saveData(merged);
-      writeToSheet(merged.stocks);
-      return respond({ status: 'ok' });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  // IMAGE UPLOAD
-  if (e.parameter.action === 'upload') {
-    try {
-      const filename = decodeURIComponent(e.parameter.filename);
-      const base64 = decodeURIComponent(e.parameter.data);
-      const url = saveImageToDrive(filename, base64);
-      return respond({ status: 'ok', url: url });
-    } catch(err) {
-      return respond({ status: 'error', message: err.message });
-    }
-  }
-
-  return respond({ status: 'ok', message: 'Stock Journal API running' });
-}
-
-// Load JSON data from hidden SyncData sheet
-function loadData() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(DATA_SHEET);
-  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
-  const val = sheet.getRange('A1').getValue();
-  if (!val) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
-  return JSON.parse(val);
-}
-
-// Save JSON data to hidden SyncData sheet
-function saveData(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(DATA_SHEET);
-  if (!sheet) sheet = ss.insertSheet(DATA_SHEET);
-  sheet.getRange('A1').setValue(JSON.stringify(data));
-}
-
-// Staging sheet for chunked push
-function loadStaging() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName('SyncStaging');
-  if (!sheet) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
-  const val = sheet.getRange('A1').getValue();
-  if (!val) return { stocks: [], nextSid: 1, nextEid: 1, deletedIds: [] };
-  return JSON.parse(val);
-}
-
-function saveStaging(data) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName('SyncStaging');
-  if (!sheet) sheet = ss.insertSheet('SyncStaging');
-  sheet.getRange('A1').setValue(JSON.stringify(data));
-}
-
-// Merge two datasets — combine stocks and entries by ticker+market and entry id
-function mergeData(server, incoming) {
-  const allDeletedIds = [...new Set([...(server.deletedIds||[]), ...(incoming.deletedIds||[])])];
-  const mergedStocks = [...(server.stocks || [])];
-
-  (incoming.stocks || []).forEach(iStock => {
-    if (allDeletedIds.includes('stock_' + iStock.id)) return;
-    const sStock = mergedStocks.find(s => s.ticker === iStock.ticker && s.market === iStock.market);
-    if (!sStock) {
-      iStock.entries = (iStock.entries||[]).filter(e => !allDeletedIds.includes(e.id));
-      mergedStocks.push(iStock);
-    } else {
-      const entryMap = {};
-      sStock.entries.forEach(e => entryMap[e.id] = e);
-      (iStock.entries||[]).forEach(e => { if (!allDeletedIds.includes(e.id) && !entryMap[e.id]) entryMap[e.id] = e; });
-      sStock.entries = Object.values(entryMap).sort((a,b) => b.date.localeCompare(a.date));
-      if (iStock.name && iStock.name !== iStock.ticker) sStock.name = iStock.name;
-    }
-  });
-
-  mergedStocks.forEach(s => { s.entries = (s.entries||[]).filter(e => !allDeletedIds.includes(e.id)); });
-
-  return {
-    stocks: mergedStocks.filter(s => !allDeletedIds.includes('stock_' + s.id)),
-    nextSid: Math.max(server.nextSid || 0, incoming.nextSid || 0) + 1,
-    nextEid: Math.max(server.nextEid || 0, incoming.nextEid || 0) + 1,
-    deletedIds: allDeletedIds
-  };
-}
-
-function saveImageToDrive(filename, base64Data) {
-  const folders = DriveApp.getFoldersByName(DRIVE_FOLDER);
-  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(DRIVE_FOLDER);
-  const ext = filename.split('.').pop().toLowerCase();
-  const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp' };
-  const mimeType = mimeMap[ext] || 'image/jpeg';
-  const decoded = Utilities.base64Decode(base64Data);
-  const blob = Utilities.newBlob(decoded, mimeType, filename);
-  const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return 'https://drive.google.com/file/d/' + file.getId() + '/view';
-}
-
-function writeToSheet(stocks) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
-  sheet.clearContents();
-  const headers = ['Ticker','Market','Company','Date','Week','Setup','Price','Commentary','Chart'];
-  const rows = [headers];
-  stocks.forEach(stock => {
-    if (!stock.entries || stock.entries.length === 0) {
-      rows.push([stock.ticker, stock.market, stock.name, '', '', '', '', '', '']);
-    } else {
-      const sorted = stock.entries.slice().sort((a,b) => b.date.localeCompare(a.date));
-      sorted.forEach(e => {
-        const d = new Date(e.date + 'T00:00:00');
-        const wkStart = new Date(d);
-        wkStart.setDate(d.getDate() - d.getDay() + 1);
-        const wk = 'Wk ' + wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        const setupMap = {inside:'Inside Candle',consolidation:'Consolidation',pullback:'Pull-back Support',breakout:'Breakout',etc:'ETC'};
-        rows.push([stock.ticker, stock.market, stock.name, e.date, wk, setupMap[e.sentiment]||e.sentiment, e.price||'', e.text, e.driveUrl||'']);
-      });
-    }
-  });
-  sheet.getRange(1,1,rows.length,headers.length).setValues(rows);
-  const hr = sheet.getRange(1,1,1,headers.length);
-  hr.setFontWeight('bold');
-  hr.setBackground('#1a73e8');
-  hr.setFontColor('#ffffff');
-  sheet.setFrozenRows(1);
-  sheet.autoResizeColumns(1, headers.length);
-}
-
-function respond(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
-
-function copyScript() {
-  navigator.clipboard.writeText(APPS_SCRIPT).then(()=>toast('Apps Script copied!')).catch(()=>{
-    const ta=document.createElement('textarea');
-    ta.value=APPS_SCRIPT; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta); toast('Apps Script copied!');
-  });
-}
+// (Vercel sync — Apps Script no longer used)
 
 document.querySelectorAll('.modal-overlay').forEach(overlay=>{
   overlay.addEventListener('click',function(e){ if(e.target===this) this.classList.remove('open'); });
