@@ -430,6 +430,16 @@
       </div>
       <button class="settings-row-action" style="color:var(--red);" onclick="resetAndSync()">Reset</button>
     </div>
+    <div class="settings-row">
+      <div class="settings-row-icon amber">
+        <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+      </div>
+      <div class="settings-row-body">
+        <div class="settings-row-label">Make this device the source</div>
+        <div class="settings-row-sub">Wipes server, uploads this device's data</div>
+      </div>
+      <button class="settings-row-action" style="color:var(--amber);" onclick="wipeServerAndUpload()">Upload</button>
+    </div>
   </div>
 
   <div class="section-title">How to set up Vercel sync</div>
@@ -573,12 +583,17 @@ function save() {
   scheduleAutoSync();
 }
 
+// Persist locally WITHOUT triggering another auto-sync (used inside syncNow)
+function saveLocal() {
+  localStorage.setItem(STORE, JSON.stringify({ stocks, nextSid, nextEid, deletedIds }));
+}
+
 let autoSyncTimer = null;
 function scheduleAutoSync() {
   if (!conf.sheetUrl || !conf.apiKey) return;
   if (autoSyncTimer) clearTimeout(autoSyncTimer);
-  // Wait 2s after the last change, then sync
-  autoSyncTimer = setTimeout(() => { syncNow(); }, 2000);
+  // Wait 3s after the last change, then sync once
+  autoSyncTimer = setTimeout(() => { syncNow(); }, 3000);
 }
 function loadConf() {
   try { return JSON.parse(localStorage.getItem(CONF)) || {}; } catch(e){ return {}; }
@@ -1117,7 +1132,7 @@ async function syncNow() {
     const pushJson = await pushRes.json();
     if (pushJson.status !== 'ok') throw new Error(pushJson.message || 'Push failed');
 
-    save();
+    saveLocal();
     renderJournal();
     if(currentPage==='log') renderLog();
     if(currentPage==='filter') renderFilter();
@@ -1164,7 +1179,7 @@ function mergeStocks(local, remote, tombstones) {
 async function resetAndSync() {
   if (!conf.sheetUrl) { toast('Add your API URL in Settings first'); return; }
   if (!confirm('This will clear all local data and pull fresh from the server. Continue?')) return;
-  // Wipe local data completely
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
   stocks = [];
   nextSid = 1;
   nextEid = 1;
@@ -1186,7 +1201,7 @@ async function resetAndSync() {
       nextSid = remote.nextSid || 1;
       nextEid = remote.nextEid || 1;
       deletedIds = remote.deletedIds || [];
-      save();
+      saveLocal();
       renderJournal();
       if(currentPage==='log') renderLog();
       if(currentPage==='filter') renderFilter();
@@ -1199,6 +1214,42 @@ async function resetAndSync() {
     }
   } catch(e) {
     toast('Reset failed — check your connection');
+  }
+}
+
+// Wipe the server completely and upload THIS device's data as the clean source of truth.
+async function wipeServerAndUpload() {
+  if (!conf.sheetUrl) { toast('Add your API URL in Settings first'); return; }
+  if (!confirm('This will REPLACE everything on the server with this device\'s data. Use this on the device that has your correct entries. Continue?')) return;
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  // Clear local tombstones so nothing is hidden
+  deletedIds = [];
+  saveLocal();
+  toast('Uploading this device as source of truth…', 5000);
+  try {
+    const stocksForSync = stocks.map(s => ({
+      ...s,
+      entries: s.entries.map(({ imgData, ...rest }) => rest)
+    }));
+    const res = await fetch(conf.sheetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'replace',
+        token: conf.apiKey || '',
+        payload: { stocks: stocksForSync, nextSid, nextEid, deletedIds: [] }
+      })
+    });
+    const json = await res.json();
+    if (json.status === 'ok') {
+      conf.lastSync = new Date().toISOString();
+      saveConf(); renderSettings();
+      toast(`Server reset — ${stocks.length} tickers uploaded`);
+    } else {
+      toast('Upload failed: ' + (json.message||'unknown'));
+    }
+  } catch(e) {
+    toast('Upload failed — check your connection');
   }
 }
 
@@ -1220,7 +1271,8 @@ function importJSON(event) {
       const d=JSON.parse(e.target.result);
       if(!d.stocks||!Array.isArray(d.stocks)) throw new Error();
       stocks=d.stocks; nextSid=d.nextSid||99; nextEid=d.nextEid||999;
-      save(); renderJournal(); toast(`Imported ${stocks.length} stocks`);
+      deletedIds=[]; // clear tombstones — imported data is the source of truth
+      saveLocal(); renderJournal(); toast(`Imported ${stocks.length} stocks`);
     } catch(err) { toast('Import failed — invalid file'); }
     event.target.value='';
   };
